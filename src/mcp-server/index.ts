@@ -56,7 +56,12 @@ thesun handles EVERYTHING autonomously:
       properties: {
         target: {
           type: 'string',
-          description: 'The API/service name (e.g., tesla, stripe, atlassian, jira)',
+          description: 'The API/service name (e.g., tesla, stripe, atlassian, jira). Can also be comma-separated for batch: "tesla, stripe, jira"',
+        },
+        targets: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Array of API/service names for parallel batch generation (e.g., ["tesla", "stripe", "jira"])',
         },
         fix: {
           type: 'string',
@@ -70,6 +75,10 @@ thesun handles EVERYTHING autonomously:
           type: 'string',
           description: 'Optional OpenAPI/Swagger spec URL or path',
         },
+        parallel: {
+          type: 'boolean',
+          description: 'Run batch generation in parallel (default: true). Each target gets its own isolated bob instance.',
+        },
       },
       required: ['target'],
     },
@@ -78,9 +87,11 @@ thesun handles EVERYTHING autonomously:
 
 const TheSunInput = z.object({
   target: z.string().min(1),
+  targets: z.array(z.string()).optional(),
   fix: z.string().optional(),
   output: z.string().optional(),
   spec: z.string().optional(),
+  parallel: z.boolean().optional().default(true),
 });
 
 class TheSunMcpServer {
@@ -132,13 +143,29 @@ class TheSunMcpServer {
     // CRITICAL: Use .claude.json NOT mcp.json - this is where Claude actually reads mcpServers
     const mcpConfigPath = join(homeDir, '.claude', '.claude.json');
 
-    // FIX MODE: Fix existing MCP code
-    if (input.fix) {
-      const fixPath = input.fix.startsWith('/') ? input.fix : join(homeDir, 'Scripts', input.fix);
-      return this.handleFixMode(input.target, fixPath, mcpConfigPath, input.spec);
+    // Parse targets: support array, comma-separated string, or single target
+    let allTargets: string[] = [];
+    if (input.targets && input.targets.length > 0) {
+      allTargets = input.targets.map(t => t.trim()).filter(t => t.length > 0);
+    } else if (input.target.includes(',')) {
+      allTargets = input.target.split(',').map(t => t.trim()).filter(t => t.length > 0);
+    } else {
+      allTargets = [input.target.trim()];
     }
 
-    // CREATE MODE: Generate new MCP
+    // FIX MODE: Fix existing MCP code (single target only)
+    if (input.fix) {
+      const fixPath = input.fix.startsWith('/') ? input.fix : join(homeDir, 'Scripts', input.fix);
+      return this.handleFixMode(allTargets[0], fixPath, mcpConfigPath, input.spec);
+    }
+
+    // BATCH MODE: Multiple targets - generate parallel orchestration instructions
+    if (allTargets.length > 1) {
+      return this.handleBatchMode(allTargets, mcpConfigPath, input.parallel ?? true);
+    }
+
+    // SINGLE MODE: Generate one MCP
+    const target = allTargets[0];
     // ALWAYS use absolute path - never relative to current directory
     let outputDir: string;
     if (input.output) {
@@ -148,11 +175,11 @@ class TheSunMcpServer {
         : join(MCP_OUTPUT_BASE, input.output);
     } else {
       // Default to central MCP output location
-      outputDir = join(MCP_OUTPUT_BASE, `${input.target}-mcp`);
+      outputDir = join(MCP_OUTPUT_BASE, `${target}-mcp`);
     }
 
     const instructions = `
-# thesun: Autonomous MCP Generation for "${input.target}"
+# thesun: Autonomous MCP Generation for "${target}"
 
 You are now operating as **thesun**, an autonomous MCP generation system.
 Execute the complete pipeline below WITHOUT stopping for human input.
@@ -542,6 +569,92 @@ If fixing thesun itself (${fixPath} contains thesun code):
 ---
 
 **BEGIN FIX MODE NOW. Start with Phase 1: Analyze Existing Code.**
+`;
+
+    return {
+      content: [{ type: 'text', text: instructions }],
+    };
+  }
+
+  private async handleBatchMode(
+    targets: string[],
+    mcpConfigPath: string,
+    parallel: boolean
+  ): Promise<{ content: Array<{ type: string; text: string }> }> {
+    const targetList = targets.map(t => `- **${t}**: ${join(MCP_OUTPUT_BASE, `${t}-mcp`)}`).join('\n');
+
+    const instructions = `
+# thesun: BATCH MCP Generation
+
+You are now operating as **thesun** in BATCH MODE - generating **${targets.length}** MCP servers ${parallel ? 'IN PARALLEL' : 'sequentially'}.
+
+---
+
+## TARGETS
+
+${targetList}
+
+**MCP Config:** ${mcpConfigPath}
+
+---
+
+## EXECUTION STRATEGY
+
+${parallel ? `
+### Parallel Execution (RECOMMENDED)
+
+You MUST use the Task tool to spawn multiple agents IN PARALLEL. This means:
+
+1. **Single message, multiple Task calls**: Send ONE message containing ${targets.length} separate Task tool invocations
+2. **Each agent is isolated**: Gets its own bob instance with git worktree
+3. **Each agent inherits your MCP servers**: Can use Confluence, Jira, Akamai, Teams, Elastic
+
+**CRITICAL INSTRUCTION:**
+
+Call the Task tool ${targets.length} times in a SINGLE response with these parameters:
+
+${targets.map((t, i) => `
+**Agent ${i + 1}: ${t}**
+- subagent_type: "general-purpose"
+- description: "Generate ${t} MCP"
+- prompt: [Full thesun generation prompt for ${t}]
+- run_in_background: true (for true parallelism)
+`).join('\n')}
+
+The prompt for each agent should include:
+1. Research phase: Search for existing MCPs, find API docs
+2. Generation phase: Create TypeScript MCP server
+3. Validation phase: Build, test, security scan
+4. Registration phase: Add to ${mcpConfigPath}
+
+` : `
+### Sequential Execution
+
+Process each target one at a time:
+${targets.map((t, i) => `${i + 1}. Generate MCP for **${t}**`).join('\n')}
+`}
+
+---
+
+## MONITORING PROGRESS
+
+Each parallel agent will run in the background. You can check progress by:
+1. Reading the output_file returned by each Task call
+2. Using "tail -f" on the output files
+3. Waiting for completion notifications
+
+---
+
+## SUCCESS CRITERIA
+
+All ${targets.length} MCPs must be:
+- Built successfully (npm run build passes)
+- Registered in ${mcpConfigPath}
+- Ready for use in Claude sessions
+
+---
+
+**BEGIN BATCH EXECUTION NOW. Spawn ${targets.length} parallel Task agents.**
 `;
 
     return {

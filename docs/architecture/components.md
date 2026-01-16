@@ -60,27 +60,69 @@ C4Component
 
     Container_Boundary(bob, "Bob Instance Manager") {
         Component(mgr, "Instance Manager", "instance-manager.ts", "Create, track, destroy instances")
+        Component(worktree, "Worktree Manager", "instance-manager.ts", "Git worktree isolation for parallel builds")
+        Component(inherit, "Inheritance Handler", "instance-manager.ts", "MCP server and plugin inheritance")
         Component(store, "Session Store", "session-store.ts", "Active session tracking, env vars")
         Component(iso, "Isolation", "isolation.ts", "Filesystem, env, process isolation")
         Component(orch_bob, "Bob Orchestrator", "bob-orchestrator.ts", "Parent-child hierarchy, plugin refresh")
     }
 
+    Rel(mgr, worktree, "Creates worktrees")
+    Rel(mgr, inherit, "Configures inheritance")
     Rel(mgr, store, "Tracks sessions")
     Rel(mgr, iso, "Enforces isolation")
     Rel(orch_bob, mgr, "Manages hierarchy")
     Rel(orch_bob, store, "Sub-bob tracking")
 ```
 
+### Git Worktree Support (Parallel Builds)
+
+Each bob instance can use a dedicated git worktree for true parallel isolation:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        Git Worktree Architecture                      │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  Main Repo (/tmp/thesun/builds)                                     │
+│       │                                                              │
+│       ├── .git/worktrees/                                           │
+│       │       ├── build-tesla-1234/                                 │
+│       │       ├── build-stripe-5678/                                │
+│       │       └── build-jira-9012/                                  │
+│       │                                                              │
+│       └── (main branch files)                                       │
+│                                                                      │
+│  Worktree Directories (isolated):                                   │
+│       /tmp/thesun/worktrees/bob-tesla-abc/  ← Bob Instance A       │
+│       /tmp/thesun/worktrees/bob-stripe-def/ ← Bob Instance B       │
+│       /tmp/thesun/worktrees/bob-jira-ghi/   ← Bob Instance C       │
+│                                                                      │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### MCP Server Inheritance
+
+Bob instances can inherit user's MCP servers for knowledge access:
+
+| Inherited MCP | Purpose |
+|---------------|---------|
+| **Confluence** | Search documentation, patterns, runbooks |
+| **Jira** | Find related issues, solutions |
+| **Akamai** | CDN/security config knowledge |
+| **Teams** | Communication context |
+| **Elastic** | Log analysis patterns |
+
 ### Instance Lifecycle
 
 | State | Description | Transitions |
 |-------|-------------|-------------|
-| **CREATED** | Instance initialized, workspace allocated | → RUNNING |
+| **CREATED** | Instance initialized, workspace/worktree allocated | → RUNNING |
 | **RUNNING** | Claude Code session active | → PAUSED, COMPLETED, FAILED |
 | **PAUSED** | Suspended for human review | → RUNNING, TERMINATED |
 | **COMPLETED** | Build finished successfully | → DESTROYED |
 | **FAILED** | Build failed after retries | → DESTROYED |
-| **DESTROYED** | Resources cleaned up | Terminal |
+| **DESTROYED** | Resources cleaned up, worktree removed | Terminal |
 
 ## Governance Components
 

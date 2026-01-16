@@ -160,9 +160,17 @@ export class Orchestrator extends EventEmitter {
     this.emit('build:start', state);
 
     // Create isolated bob instance for this build
+    // Uses git worktrees for true parallel isolation and inherits user's MCP servers
     const bobInstance = await this.bobManager.create({
       toolName: tool.name,
       model: selectModelForPhase(BuildPhase.DISCOVERING),
+      // Enable git worktree for parallel builds (each gets isolated working dir)
+      gitRepo: this.config.workspace,
+      branch: `build/${tool.name}-${Date.now()}`,
+      // Inherit user's MCP servers so bob can use Confluence, Jira, etc.
+      inheritMcpServers: true,
+      // Inherit thesun plugin so bob can use its tools
+      inheritPlugins: true,
     });
 
     state = { ...state, bobInstanceId: bobInstance.id };

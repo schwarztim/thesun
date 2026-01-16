@@ -151,29 +151,51 @@ npm run orchestrator:status
 ### Bob Instance Isolation
 
 Each tool build runs in its own isolated "bob" instance (a Claude Code session):
-- Separate filesystem workspace
+- Separate filesystem workspace (via git worktrees for parallel builds)
 - Isolated environment variables (no cross-contamination)
 - Independent caches and state
 - No need to restart Claude between tools
+- **Inherits user's MCP servers** (Confluence, Jira, Akamai, Teams, Elastic)
+- **Inherits user's plugins** (thesun tools available in sub-agents)
 
 ```typescript
-// Create isolated instance for tool build
+// Create isolated instance for tool build with parallel support
 const instance = await bobManager.create({
   toolName: 'dynatrace',
-  workspace: '/tmp/thesun/builds/dynatrace',
-  env: { DYNATRACE_API_TOKEN: '...' }
+  // Git worktree for true parallel isolation
+  gitRepo: '/path/to/workspace',
+  branch: `build/dynatrace-${Date.now()}`,
+  // Inherit user's MCP servers for knowledge access
+  inheritMcpServers: true,
+  // Inherit thesun plugin tools
+  inheritPlugins: true,
 });
 
-// Execute work in isolation
-await instance.execute(async (claude) => {
-  await claude.research();
-  await claude.generate();
-  await claude.test();
+// Execute work in isolation - bob can use Confluence, Jira, etc.
+const result = await bobManager.execute(instance.id, 'Research and generate MCP', {
+  phase: 'discovering',
 });
 
-// Clean up
+// Clean up (includes worktree removal)
 await bobManager.destroy(instance.id);
 ```
+
+### Parallel Multi-Tool Builds
+
+Generate multiple MCPs simultaneously with true parallelism:
+
+```bash
+# Single command, multiple targets - runs in parallel
+thesun({ target: "tesla, stripe, jira" })
+# Or with explicit array
+thesun({ targets: ["tesla", "stripe", "jira"] })
+```
+
+Each target gets:
+- Its own git worktree (isolated working directory)
+- Its own bob instance (separate Claude session)
+- Access to all user's MCP servers (for searching docs, knowledge bases)
+- Independent progress tracking
 
 ### API Discovery Flow
 
