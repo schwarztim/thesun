@@ -397,6 +397,182 @@ Tell the user: "✅ MCP '${input.target}' registered as USER MCP at ${outputDir}
 
 ---
 
+## PHASE 5: UPDATE & IMPROVE (Post-Generation Enhancement)
+
+After successful registration, run a comprehensive improvement pass on the newly generated MCP.
+
+### 5.1 Performance Analysis
+
+Analyze the generated code for anti-patterns:
+
+\`\`\`bash
+cd "${outputDir}"
+
+# Check for shell spawning (VERY BAD - kills performance)
+grep -rn "child_process\\|spawn(" src/ || echo "No shell spawning found"
+
+# Check for HTTP client reuse
+grep -rn "axios\\|fetch\\|got\\|node-fetch" src/ || echo "No HTTP client found"
+
+# Check for connection pooling
+grep -rn "keepAlive\\|agent:\\|httpAgent\\|httpsAgent" src/ || echo "No connection pooling"
+
+# Check for token caching
+grep -rn "tokenCache\\|accessToken\\|expiresAt" src/ || echo "No token caching"
+\`\`\`
+
+**Apply these optimizations if missing:**
+
+| Anti-Pattern | Fix |
+|--------------|-----|
+| No connection pooling | Add http.Agent with keepAlive: true |
+| Auth on every call | Cache tokens with expiry timestamp |
+| Sequential API calls | Batch with Promise.all() |
+| New client per request | Use singleton pattern |
+
+### 5.2 Security Scan
+
+Search for vulnerabilities:
+
+\`\`\`bash
+# Dependency vulnerabilities
+cd "${outputDir}" && npm audit 2>&1 | head -50
+
+# Check for eval/exec patterns
+grep -rn "eval\\|exec\\|Function(" src/ || echo "No dangerous patterns"
+\`\`\`
+
+**Web Search for security:**
+- Search: "${input.target} API CVE vulnerability 2025"
+- Search: "${input.target} security advisory"
+
+Apply any critical security fixes found.
+
+### 5.3 Feature Enhancement Research
+
+Search for features we may have missed:
+
+\`\`\`
+WebSearch: "${input.target} API new features 2025"
+WebSearch: "${input.target} API changelog"
+WebSearch: "${input.target} MCP server" site:github.com
+\`\`\`
+
+If important features are found that we didn't implement:
+1. Add them to the MCP
+2. Rebuild and test
+3. Update documentation
+
+### 5.4 Local Documentation Updates
+
+**Update CHANGELOG.md:**
+\`\`\`markdown
+# Changelog
+
+## [1.0.0] - ${new Date().toISOString().split('T')[0]}
+
+### Added
+- Initial release
+- [List all implemented tools]
+
+### Security
+- [List any security measures implemented]
+
+### Performance
+- [List any optimizations applied]
+\`\`\`
+
+**Update README.md:**
+- Ensure all tools are documented
+- Include usage examples
+- Document all environment variables
+- Add troubleshooting section
+
+### 5.5 Remote Documentation (Confluence)
+
+If Confluence MCP is available (check with Atlassian tools):
+
+1. **Create Confluence Page**: Engineering/MCP Servers/${input.target}
+   - Overview and purpose
+   - Installation instructions
+   - Tool reference table
+   - Configuration guide
+   - Troubleshooting
+
+2. **Link to existing pages** if relevant
+
+### 5.6 GitHub Release (if repository exists)
+
+If the MCP has a GitHub repository:
+1. Create initial commit with all files
+2. Tag version 1.0.0
+3. Create GitHub release with changelog
+
+### 5.7 Publish History Tracking (MANDATORY)
+
+Create \`.thesun/publish-history.md\` in the MCP directory:
+
+\`\`\`bash
+mkdir -p "${outputDir}/.thesun"
+\`\`\`
+
+Write to \`${outputDir}/.thesun/publish-history.md\`:
+\`\`\`markdown
+# ${input.target} MCP Publish History
+
+This file tracks where documentation has been published.
+DO NOT commit to public repositories.
+
+## Local
+- Path: ${outputDir}
+- Created: ${new Date().toISOString()}
+- Version: 1.0.0
+
+## Confluence
+- Page: Engineering/MCP Servers/${input.target}
+- URL: [filled after publish]
+- Last Updated: [timestamp]
+
+## GitHub
+- Repo: [filled after publish]
+- Last Release: 1.0.0
+- Last Updated: [timestamp]
+
+## Changelog Updates
+- ${new Date().toISOString()}: Initial release
+\`\`\`
+
+Add to .gitignore:
+\`\`\`bash
+echo ".thesun/" >> "${outputDir}/.gitignore"
+\`\`\`
+
+### 5.8 Final Report
+
+After all improvements, provide a summary:
+\`\`\`
+## ${input.target} MCP - Generation Complete
+
+### Summary
+- **Tools Generated**: [count]
+- **Performance Optimizations**: [list]
+- **Security Fixes**: [list or "None needed"]
+- **Documentation**: Local ✅ | Confluence [✅/❌] | GitHub [✅/❌]
+
+### Files Created
+- ${outputDir}/src/index.ts
+- ${outputDir}/README.md
+- ${outputDir}/CHANGELOG.md
+- ${outputDir}/.thesun/publish-history.md
+
+### Next Steps
+1. Restart Claude to load the new MCP
+2. Configure credentials in ~/.claude/user-mcps.json
+3. Test with: "List available ${input.target} tools"
+\`\`\`
+
+---
+
 ## EXECUTION RULES
 
 1. **Be autonomous** - Don't ask for permission at each step
@@ -608,6 +784,130 @@ If fixing thesun itself (${fixPath} contains thesun code):
 - Be extra careful with changes
 - Test thoroughly before committing
 - This is a recursive self-improvement loop!
+
+---
+
+## PHASE 5: UPDATE & IMPROVE (Post-Fix Enhancement)
+
+After successful fixes, run a comprehensive improvement pass.
+
+### 5.1 Performance Analysis
+
+Check for performance anti-patterns:
+
+\`\`\`bash
+cd "${fixPath}"
+
+# Check for shell spawning (should use native HTTP)
+grep -rn "child_process\\|spawn(" src/ || echo "No shell spawning"
+
+# Check for connection pooling
+grep -rn "keepAlive\\|httpAgent\\|httpsAgent" src/ || echo "No connection pooling"
+
+# Check for token caching
+grep -rn "tokenCache\\|expiresAt" src/ || echo "No token caching"
+\`\`\`
+
+**Apply optimizations if missing:**
+- Add HTTP connection pooling with keep-alive
+- Implement token caching with expiry
+- Batch sequential calls with Promise.all()
+- Use singleton pattern for clients
+
+### 5.2 Security Scan
+
+\`\`\`bash
+cd "${fixPath}" && npm audit 2>&1 | head -50
+grep -rn "eval\\|exec\\|Function(" src/ || echo "No dangerous patterns"
+\`\`\`
+
+**Web Search:**
+- Search: "${target} API CVE vulnerability 2025"
+- Search: "${target} security advisory"
+
+### 5.3 Feature Enhancement Research
+
+\`\`\`
+WebSearch: "${target} API new features 2025"
+WebSearch: "${target} API changelog"
+\`\`\`
+
+If important missing features found, add them.
+
+### 5.4 Documentation Updates
+
+**Update CHANGELOG.md** with all fixes applied:
+\`\`\`markdown
+## [X.Y.Z] - ${new Date().toISOString().split('T')[0]}
+
+### Fixed
+- [List all bugs fixed]
+
+### Changed
+- [List improvements made]
+
+### Security
+- [List security fixes]
+
+### Performance
+- [List optimizations]
+\`\`\`
+
+**Update README.md** if needed:
+- Document any new tools
+- Update configuration requirements
+- Add troubleshooting for fixed issues
+
+### 5.5 Remote Documentation (Confluence)
+
+If Confluence is available:
+1. Update page: Engineering/MCP Servers/${target}
+2. Add section for fixes applied
+3. Update troubleshooting guide
+
+### 5.6 Publish History Tracking (MANDATORY)
+
+Create or update \`.thesun/publish-history.md\`:
+
+\`\`\`bash
+mkdir -p "${fixPath}/.thesun"
+\`\`\`
+
+Append to \`${fixPath}/.thesun/publish-history.md\`:
+\`\`\`markdown
+## Fix Applied - ${new Date().toISOString()}
+
+### Issues Fixed
+- [List issues]
+
+### Performance Improvements
+- [List if any]
+
+### Documentation Updated
+- Local: ✅
+- Confluence: [✅/❌]
+- GitHub: [✅/❌]
+\`\`\`
+
+### 5.7 Final Report
+
+\`\`\`
+## ${target} MCP - Fix Complete
+
+### Summary
+- **Issues Fixed**: [count]
+- **Performance Optimizations**: [list or "None"]
+- **Security Fixes**: [list or "None"]
+- **Documentation Updated**: Local ✅ | Confluence [✅/❌] | GitHub [✅/❌]
+
+### Files Modified
+- [List changed files]
+
+### Next Steps
+1. Restart Claude to reload the MCP
+2. Test the fixed functionality
+3. Monitor for any remaining issues
+\`\`\`
 
 ---
 
