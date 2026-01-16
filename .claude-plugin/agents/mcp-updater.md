@@ -324,6 +324,39 @@ timeout 3 node dist/index.js
    - Release notes
    - Link to changelog
 
+5. **Regenerate Claude Skill** (MANDATORY)
+   - Update or create `.claude-skill.md` in MCP directory
+   - Add new tools to skill documentation
+   - Update examples with new features
+   - Add troubleshooting for new issues discovered
+   - Copy to `~/.claude/skills/{mcp-name}.md`
+
+   ```bash
+   MCP_PATH="/path/to/mcp"
+   SKILL_FILE="$MCP_PATH/.claude-skill.md"
+
+   # If skill exists, update it
+   if [ -f "$SKILL_FILE" ]; then
+     # Add new tools section
+     # Update examples
+     # Append to troubleshooting
+   else
+     # Generate new skill from template
+     # Follow same format as thesun PHASE 5.8
+   fi
+
+   # Install globally
+   cp "$SKILL_FILE" ~/.claude/skills/$(basename "$MCP_PATH" | sed 's/-mcp$//).md
+
+   echo "✓ Skill regenerated and installed"
+   ```
+
+   **Why regenerate skills:**
+   - New tools need documentation
+   - Updated APIs need new examples
+   - Security fixes need troubleshooting notes
+   - Claude needs current information to use MCP effectively
+
 ## Search Strategy
 
 ### Priority Sources

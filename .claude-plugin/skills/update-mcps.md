@@ -304,6 +304,48 @@ test -f "$MCP_DIR/.thesun/publish-history.md" && echo "✓ Tracking exists"
 - Creates audit trail for compliance
 - **NEVER commits tracking to public repos** (gitignored)
 
+### Skill Regeneration (MANDATORY)
+
+**Every MCP update MUST regenerate its Claude skill.**
+
+```bash
+MCP_DIR="/path/to/mcp"
+MCP_NAME=$(basename "$MCP_DIR" | sed 's/-mcp$//')
+SKILL_FILE="$MCP_DIR/.claude-skill.md"
+
+# Update or create skill
+if [ -f "$SKILL_FILE" ]; then
+  echo "Updating existing skill..."
+  # Append new tools section if any
+  # Update examples with new features
+  # Add troubleshooting for new issues
+else
+  echo "Creating new skill..."
+  # Generate skill following thesun PHASE 5.8 template
+fi
+
+# Install globally
+cp "$SKILL_FILE" ~/.claude/skills/$MCP_NAME.md
+
+echo "✓ Skill regenerated: ~/.claude/skills/$MCP_NAME.md"
+
+# Track in publish history
+echo "| $(date -Iseconds) | [version] | Skill updated | Local |" >> "$MCP_DIR/.thesun/publish-history.md"
+```
+
+**What to update in skills:**
+- Add new tools to "Available Tools" section
+- Create examples for new features
+- Update authentication instructions if changed
+- Add troubleshooting for new error patterns
+- Update best practices based on improvements
+
+**Why regenerate:**
+- Claude needs current tool documentation
+- New features need examples
+- API changes need reflected in usage patterns
+- Security updates need troubleshooting guides
+
 ## Scope
 
 ### Local MCPs (~/Scripts/mcp-servers/)
