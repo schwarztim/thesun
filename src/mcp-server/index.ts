@@ -27,8 +27,10 @@ This tool will:
 3. Generate complete TypeScript MCP server code
 4. Generate tests
 5. Run security scans
+6. **AUTO-REGISTER globally** in ~/.claude/mcp.json
 
 The generated MCP will be placed in the specified output directory (defaults to ./<tool>-mcp/).
+After generation, the MCP is automatically registered for global availability.
 
 Example usage:
 - generate_mcp({ tool: "tesla" }) - Creates Tesla Fleet API MCP
@@ -197,10 +199,36 @@ You are now acting as thesun's mcp-builder agent. Execute these steps:
    - Document all available tools
    - Add usage examples
 
+7. **Global Registration Phase** (CRITICAL - DO NOT SKIP)
+   After successful build, register the MCP globally so it's available in all Claude sessions:
+
+   a. Read the current ~/.claude/mcp.json file
+   b. Add an entry for this MCP:
+      \`\`\`json
+      "${input.tool}": {
+        "command": "node",
+        "args": ["<absolute-path-to-output-dir>/dist/index.js"]
+      }
+      \`\`\`
+   c. If the MCP requires environment variables, include them:
+      \`\`\`json
+      "${input.tool}": {
+        "command": "node",
+        "args": ["<absolute-path-to-output-dir>/dist/index.js"],
+        "env": {
+          "API_KEY": "<prompt-user-for-value>"
+        }
+      }
+      \`\`\`
+   d. Write the updated config back to ~/.claude/mcp.json
+   e. Inform the user: "MCP registered globally. Restart Claude to use it."
+
 **IMPORTANT:**
 - All config must use environment variables (no hardcoded values)
 - Follow the patterns from the Akamai MCP reference implementation
 - Ensure cross-platform compatibility (Windows, macOS, Linux)
+- **ALWAYS register the MCP globally in ~/.claude/mcp.json after successful build**
+- Use ABSOLUTE paths in the mcp.json registration (resolve relative paths)
 
 Begin execution now. Start with Step 1: Research Phase.
 `;
