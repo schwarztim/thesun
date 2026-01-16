@@ -191,10 +191,43 @@ Then create the project structure:
 ${outputDir}/
 ├── src/
 │   └── index.ts          # MCP server entry point
+├── scripts/
+│   ├── install.sh        # Linux/macOS installer
+│   └── install.ps1       # Windows PowerShell installer
 ├── package.json
 ├── tsconfig.json
 ├── .env.example          # Required environment variables
-└── README.md
+└── README.md             # With easy install instructions
+\`\`\`
+
+### 2.1.1 Cross-Platform Installation (REQUIRED)
+
+Every generated MCP MUST include easy installation:
+
+**install.sh** (Linux/macOS):
+\`\`\`bash
+#!/bin/bash
+set -e
+npm install && npm run build
+echo "Add to ~/.claude/mcp.json or run: npx ${input.target}-mcp"
+\`\`\`
+
+**install.ps1** (Windows):
+\`\`\`powershell
+npm install; npm run build
+Write-Host "Add to Claude config or run: npx ${input.target}-mcp"
+\`\`\`
+
+**README.md** must include:
+\`\`\`markdown
+## Quick Install
+# Clone and install
+git clone https://github.com/<owner>/${input.target}-mcp
+cd ${input.target}-mcp
+./scripts/install.sh  # or .\\scripts\\install.ps1 on Windows
+
+## Or use npx (if published to npm)
+npx ${input.target}-mcp
 \`\`\`
 
 ### 2.2 Generate MCP Server
