@@ -135,7 +135,8 @@ class TheSunMcpServer {
     }
 
     const homeDir = homedir();
-    const mcpConfigPath = join(homeDir, '.claude', 'mcp.json');
+    // CRITICAL: Use .claude.json NOT mcp.json - this is where Claude actually reads mcpServers
+    const mcpConfigPath = join(homeDir, '.claude', '.claude.json');
 
     const instructions = `
 # thesun: Autonomous MCP Generation for "${input.target}"
@@ -264,7 +265,8 @@ cd "${outputDir}" && npm install && npm run build
 After successful build, register the MCP as a **USER MCP** so it's available in ALL Claude sessions.
 
 ### IMPORTANT CONFIG FILE RULES:
-- **USE**: \`~/.claude/mcp.json\` (User MCPs - available globally)
+- **USE**: \`~/.claude/.claude.json\` (User MCPs - available globally)
+- **DO NOT USE**: \`~/.claude/mcp.json\` (WRONG FILE - Claude ignores this!)
 - **DO NOT USE**: \`~/.mcp.json\` (Project MCPs - causes confusion)
 - **DO NOT USE**: \`./.mcp.json\` in any project directory
 
@@ -273,25 +275,34 @@ After successful build, register the MCP as a **USER MCP** so it's available in 
 cat "${mcpConfigPath}"
 \`\`\`
 
-### 4.2 Add the new MCP entry
-The config file is JSON with NO wrapper. Add entry directly at root level:
+If the file doesn't exist, create it with this structure:
 \`\`\`json
 {
-  "existing-mcp": { ... },
-  "${input.target}": {
-    "command": "node",
-    "args": ["${outputDir}/dist/index.js"],
-    "env": {
-      // Add required env vars from .env.example
+  "mcpServers": {}
+}
+\`\`\`
+
+### 4.2 Add the new MCP entry
+The config file is JSON with mcpServers wrapper. Add entry INSIDE mcpServers:
+\`\`\`json
+{
+  "mcpServers": {
+    "existing-mcp": { ... },
+    "${input.target}": {
+      "command": "node",
+      "args": ["${outputDir}/dist/index.js"],
+      "env": {
+        // Add required env vars from .env.example
+      }
     }
   }
 }
 \`\`\`
 
-**NOTE**: This is a USER MCP config - entries are at the root level, NOT wrapped in "mcpServers".
+**CRITICAL**: Entries go INSIDE the "mcpServers" object, NOT at root level!
 
 ### 4.3 Write updated config
-Use the Edit tool to add the new entry to ${mcpConfigPath}
+Use the Edit tool to add the new entry inside mcpServers in ${mcpConfigPath}
 
 ### 4.4 Verify registration
 \`\`\`bash
@@ -309,7 +320,7 @@ Tell the user: "✅ MCP '${input.target}' registered as USER MCP at ${outputDir}
 2. **Be thorough** - Research completely before generating
 3. **Be practical** - If good MCP exists, recommend it
 4. **Always register globally** - Every generated MCP MUST be in ${mcpConfigPath}
-5. **Use absolute paths** - All paths in mcp.json must be absolute (starting with /)
+5. **Use absolute paths** - All paths in .claude.json must be absolute (starting with /)
 6. **Directory independent** - This works from ANY directory
 
 ---
