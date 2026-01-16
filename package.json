@@ -5,12 +5,14 @@
   "type": "module",
   "main": "dist/cli/index.js",
   "bin": {
-    "thesun": "./dist/cli/index.js"
+    "thesun": "./dist/cli/index.js",
+    "thesun-mcp": "./dist/mcp-server/index.js"
   },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
     "start": "node dist/cli/index.js",
+    "mcp": "node dist/mcp-server/index.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
