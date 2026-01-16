@@ -30,36 +30,41 @@ const MCP_OUTPUT_BASE = join(homedir(), 'Scripts', 'mcp-servers');
 const TOOLS: Tool[] = [
   {
     name: 'thesun',
-    description: `Autonomous MCP server generator. Creates production-ready MCP servers for any API.
+    description: `Autonomous MCP server generator AND fixer. Creates or fixes MCP servers for any API.
 
-Just say: "use thesun for Tesla" or "use thesun for Stripe"
+**TWO MODES:**
+
+1. **CREATE MODE** (default): "use thesun for Tesla" - Creates new MCP from scratch
+2. **FIX MODE**: "use thesun to fix /path/to/mcp" - Fixes existing MCP code
 
 thesun handles EVERYTHING autonomously:
 - Researches the API (web search, docs, OpenAPI specs)
-- Checks for existing MCP implementations (uses them if good enough)
-- Generates complete TypeScript MCP server if needed
+- Creates OR fixes MCP server code
 - Writes comprehensive tests
 - Runs security scans
-- Registers globally in ~/.claude/mcp.json
+- Registers globally in ~/.claude/.claude.json
 
-Output: A complete, tested, globally-registered MCP server ready to use.
-Default output location: ~/Scripts/mcp-servers/<target>-mcp/
-
-Examples:
-- thesun({ target: "tesla" }) - Creates Tesla Fleet API MCP at ~/Scripts/mcp-servers/tesla-mcp/
+**CREATE Examples:**
+- thesun({ target: "tesla" }) - Creates Tesla Fleet API MCP
 - thesun({ target: "stripe" }) - Creates Stripe payments MCP
-- thesun({ target: "slack", output: "/custom/path/slack-mcp" }) - Custom absolute output directory
-- thesun({ target: "custom-api", spec: "https://api.example.com/openapi.json" }) - With OpenAPI spec`,
+
+**FIX Examples:**
+- thesun({ target: "atlassian", fix: "/Users/tim/Scripts/AtlassianPlugin" }) - Fix existing plugin
+- thesun({ target: "jira", fix: "." }) - Fix MCP in current directory`,
     inputSchema: {
       type: 'object',
       properties: {
         target: {
           type: 'string',
-          description: 'The API/service to create an MCP for (e.g., tesla, stripe, slack, jira)',
+          description: 'The API/service name (e.g., tesla, stripe, atlassian, jira)',
+        },
+        fix: {
+          type: 'string',
+          description: 'Path to existing MCP code to fix. If provided, runs in FIX mode instead of CREATE mode.',
         },
         output: {
           type: 'string',
-          description: `Output directory. Defaults to ~/Scripts/mcp-servers/<target>-mcp/. MUST be absolute path if provided.`,
+          description: `Output directory for CREATE mode. Defaults to ~/Scripts/mcp-servers/<target>-mcp/. Ignored in FIX mode.`,
         },
         spec: {
           type: 'string',
@@ -73,6 +78,7 @@ Examples:
 
 const TheSunInput = z.object({
   target: z.string().min(1),
+  fix: z.string().optional(),
   output: z.string().optional(),
   spec: z.string().optional(),
 });
@@ -122,6 +128,17 @@ class TheSunMcpServer {
   private async handleTheSun(args: unknown): Promise<{ content: Array<{ type: string; text: string }> }> {
     const input = TheSunInput.parse(args);
 
+    const homeDir = homedir();
+    // CRITICAL: Use .claude.json NOT mcp.json - this is where Claude actually reads mcpServers
+    const mcpConfigPath = join(homeDir, '.claude', '.claude.json');
+
+    // FIX MODE: Fix existing MCP code
+    if (input.fix) {
+      const fixPath = input.fix.startsWith('/') ? input.fix : join(homeDir, 'Scripts', input.fix);
+      return this.handleFixMode(input.target, fixPath, mcpConfigPath, input.spec);
+    }
+
+    // CREATE MODE: Generate new MCP
     // ALWAYS use absolute path - never relative to current directory
     let outputDir: string;
     if (input.output) {
@@ -133,10 +150,6 @@ class TheSunMcpServer {
       // Default to central MCP output location
       outputDir = join(MCP_OUTPUT_BASE, `${input.target}-mcp`);
     }
-
-    const homeDir = homedir();
-    // CRITICAL: Use .claude.json NOT mcp.json - this is where Claude actually reads mcpServers
-    const mcpConfigPath = join(homeDir, '.claude', '.claude.json');
 
     const instructions = `
 # thesun: Autonomous MCP Generation for "${input.target}"
@@ -385,6 +398,150 @@ When escalating, provide:
 ---
 
 **BEGIN EXECUTION NOW. Start with Phase 1: Research.**
+`;
+
+    return {
+      content: [{ type: 'text', text: instructions }],
+    };
+  }
+
+  private async handleFixMode(
+    target: string,
+    fixPath: string,
+    mcpConfigPath: string,
+    spec?: string
+  ): Promise<{ content: Array<{ type: string; text: string }> }> {
+    const instructions = `
+# thesun: FIX MODE for "${target}"
+
+You are now operating as **thesun** in FIX MODE - debugging and improving an existing MCP.
+Execute autonomously WITHOUT stopping for human input unless absolutely necessary.
+
+**Target API:** ${target}
+**Code Location:** ${fixPath}
+**MCP Config:** ${mcpConfigPath}
+${spec ? `**API Spec:** ${spec}` : ''}
+
+---
+
+## PHASE 1: ANALYZE EXISTING CODE
+
+### 1.1 Explore the codebase
+- Read the main entry point (usually src/index.ts or index.ts)
+- Understand the project structure
+- Check package.json for dependencies and scripts
+- Look at existing tests if any
+- Read any README or documentation
+
+### 1.2 Identify issues
+Run these checks:
+\`\`\`bash
+cd "${fixPath}"
+npm install 2>&1
+npm run build 2>&1
+npm test 2>&1
+\`\`\`
+
+Catalog ALL errors:
+- Build/TypeScript errors
+- Test failures
+- Runtime errors
+- Missing dependencies
+- Configuration issues
+
+### 1.3 Research the API
+- Find official ${target} API documentation
+- Check for OpenAPI/Swagger specs
+- Understand authentication requirements
+- Note any recent API changes
+
+---
+
+## PHASE 2: FIX ISSUES
+
+### 2.1 Fix in priority order
+1. **Critical**: Build errors, missing dependencies
+2. **High**: Authentication issues, API connection failures
+3. **Medium**: Test failures, type errors
+4. **Low**: Code quality, missing features
+
+### 2.2 For each fix
+- Make the minimal change needed
+- Test after each fix: \`npm run build && npm test\`
+- If fix doesn't work, try alternative approaches
+- Document what you changed and why
+
+### 2.3 Use ralph loops
+If tests fail:
+- Analyze failure → Fix → Re-test → Repeat
+- Maximum 5 iterations per issue
+- Search web/docs before escalating
+
+---
+
+## PHASE 3: VALIDATE
+
+### 3.1 Full test suite
+\`\`\`bash
+cd "${fixPath}" && npm run build && npm test
+\`\`\`
+
+### 3.2 Manual verification
+- Start the server and verify it connects
+- Test a few key tools manually
+
+### 3.3 Security check
+- No hardcoded secrets
+- Proper input validation
+- Safe error handling
+
+---
+
+## PHASE 4: REGISTER (if not already registered)
+
+Check if already in ${mcpConfigPath}, if not add it:
+\`\`\`json
+{
+  "mcpServers": {
+    "${target}": {
+      "command": "node",
+      "args": ["${fixPath}/dist/index.js"],
+      "env": {
+        // Add required env vars
+      }
+    }
+  }
+}
+\`\`\`
+
+---
+
+## ESCALATION RULES
+
+Before EVER asking the user:
+1. Search web for the exact error
+2. Check Confluence/Jira for similar issues
+3. Read official API docs thoroughly
+4. Try at least 3 different approaches
+5. Look at reference implementations
+
+Only escalate with:
+- What you tried (with links)
+- Why each approach failed
+- Specific question (not "it doesn't work")
+
+---
+
+## SELF-IMPROVEMENT NOTE
+
+If fixing thesun itself (${fixPath} contains thesun code):
+- Be extra careful with changes
+- Test thoroughly before committing
+- This is a recursive self-improvement loop!
+
+---
+
+**BEGIN FIX MODE NOW. Start with Phase 1: Analyze Existing Code.**
 `;
 
     return {
