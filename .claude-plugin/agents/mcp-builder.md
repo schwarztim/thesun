@@ -34,134 +34,298 @@ You handle everything else: research, generation, testing, iteration, and optimi
 
 ## Build Phases
 
-Execute these phases in order, iterating as needed:
+Execute these phases, **running parallel tasks within each phase**.
 
 ### Phase 1: Discovery (use Opus for thoroughness)
 
-1. **Search for existing MCPs**
-   - Search GitHub for `{tool-name} mcp server`
-   - Search npm for `@modelcontextprotocol/{tool-name}`
-   - Analyze existing implementations for patterns and gaps
+**Run ALL discovery tasks IN PARALLEL:**
 
-2. **Gather API documentation**
-   - Find official API docs
-   - Download OpenAPI/Swagger specs if available
-   - Map ALL endpoints (don't miss any)
+```
+<Task subagent_type="Explore" run_in_background="true">
+Search GitHub for existing {tool} MCP implementations
+</Task>
 
-3. **Identify authentication requirements**
-   - Determine auth type (OAuth, API key, bearer, etc.)
-   - Document required credentials
-   - Plan secure credential handling
+<Task subagent_type="Explore" run_in_background="true">
+Find official {tool} API documentation and OpenAPI specs
+</Task>
 
-4. **Gap analysis**
-   - Compare discovered endpoints against existing MCPs
-   - Identify missing functionality
-   - Note pagination, rate limits, error handling patterns
+<Task subagent_type="Explore" run_in_background="true">
+Research {tool} authentication methods and requirements
+</Task>
+
+<Task subagent_type="Explore" run_in_background="true">
+Search npm for {tool} SDK packages and clients
+</Task>
+```
+
+Then aggregate results into:
+
+1. **Existing MCP analysis** - patterns and gaps from GitHub search
+2. **API endpoint map** - ALL endpoints from docs/OpenAPI
+3. **Auth requirements** - credential types and flows
+4. **Gap analysis** - what's missing from existing implementations
 
 **Output**: Create `discovery-report.md` with complete findings
 
 ### Phase 2: Generation (use Sonnet for efficiency)
 
-1. **Scaffold project structure**
-   ```
-   {tool}-mcp-server/
-   ├── src/
-   │   ├── index.ts           # MCP server entry
-   │   ├── tools/             # Tool handlers
-   │   ├── auth/              # Authentication
-   │   ├── utils/             # Utilities
-   │   └── types/             # Type definitions
-   ├── tests/
-   ├── package.json
-   ├── tsconfig.json
-   ├── .env.example
-   └── README.md
-   ```
+**Run code generation tasks IN PARALLEL:**
 
-2. **Generate tool implementations**
-   - One tool per endpoint (or logical grouping)
-   - Include parameter validation (Zod)
-   - Add comprehensive error handling
-   - Implement pagination support
-   - Add retry with exponential backoff
+```
+<Task subagent_type="general-purpose" run_in_background="true">
+Generate src/index.ts MCP server entry with graceful startup,
+connection pooling, and singleton client pattern for {tool}
+</Task>
 
-3. **Configuration abstraction**
-   - ALL config via environment variables
-   - NO hardcoded company data
-   - Generate `.env.example` with fake values
+<Task subagent_type="general-purpose" run_in_background="true">
+Generate src/auth/ authentication module with token caching
+and auto-refresh for {tool} using {auth_method}
+</Task>
 
-4. **Use reference implementation patterns**
-   - Follow `~/Scripts/akamai-mcp-server` architecture
-   - Include circuit breaker, connection pooling, caching
-   - Add structured logging
+<Task subagent_type="general-purpose" run_in_background="true">
+Generate src/tools/ handlers for {tool} API endpoints: {endpoint_list_1}
+Include Zod validation, error handling, pagination
+</Task>
+
+<Task subagent_type="general-purpose" run_in_background="true">
+Generate src/tools/ handlers for {tool} API endpoints: {endpoint_list_2}
+Include Zod validation, error handling, pagination
+</Task>
+
+<Task subagent_type="general-purpose" run_in_background="true">
+Generate src/utils/ with batch operations, retry logic,
+response caching, and helper functions for {tool}
+</Task>
+
+<Task subagent_type="general-purpose" run_in_background="true">
+Generate package.json, tsconfig.json, .env.example for {tool}
+</Task>
+```
+
+**Project structure:**
+```
+{tool}-mcp-server/
+├── src/
+│   ├── index.ts           # MCP server entry (graceful startup)
+│   ├── tools/             # Tool handlers (parallel generated)
+│   ├── auth/              # Authentication (token caching)
+│   ├── utils/             # Utilities (batch ops, caching)
+│   └── types/             # Type definitions
+├── tests/
+├── package.json
+├── tsconfig.json
+├── .env.example
+└── README.md
+```
+
+**After parallel generation completes:**
+1. Merge all generated files
+2. Resolve any conflicts
+3. Validate imports and dependencies
 
 ### Phase 3: Testing (use Sonnet, iterate as needed)
 
-1. **Generate tests**
-   - Unit tests for each tool
-   - Integration tests with mocked API
-   - Contract tests against OpenAPI schema
+**Run test generation IN PARALLEL:**
 
-2. **Run tests**
-   ```bash
-   npm test
-   ```
+```
+<Task subagent_type="general-purpose" run_in_background="true">
+Generate unit tests for {tool} tools: {tool_list_1}
+Mock all external API calls, test edge cases
+</Task>
 
-3. **Iterate on failures**
-   - Diagnose failures
-   - Fix issues
-   - Re-run tests
-   - Repeat until all pass (max 5 iterations)
+<Task subagent_type="general-purpose" run_in_background="true">
+Generate unit tests for {tool} tools: {tool_list_2}
+Mock all external API calls, test edge cases
+</Task>
 
-4. **Check coverage**
-   - Target: 70% minimum
-   - Add tests for uncovered code
+<Task subagent_type="general-purpose" run_in_background="true">
+Generate integration tests for {tool} with mock server
+Test full request/response flows
+</Task>
+
+<Task subagent_type="general-purpose" run_in_background="true">
+Generate contract tests against {tool} OpenAPI schema
+Validate request/response shapes
+</Task>
+```
+
+**After test generation, run tests:**
+```bash
+npm test
+```
+
+**Parallel failure fixing (if tests fail):**
+```
+<Task subagent_type="general-purpose" run_in_background="true">
+Fix test failures in {test_file_1}: {error_summary}
+</Task>
+
+<Task subagent_type="general-purpose" run_in_background="true">
+Fix test failures in {test_file_2}: {error_summary}
+</Task>
+```
+
+**Iterate until all pass (max 5 iterations)**
+
+**Coverage target:** 70% minimum - add tests for uncovered code in parallel
 
 ### Phase 4: Security Scan (use Opus for thoroughness)
 
-1. **SAST scan**
-   - Run `npm audit`
-   - Check for security anti-patterns
+**Run ALL security scans IN PARALLEL:**
 
-2. **Secret detection**
-   - Verify no hardcoded secrets
-   - Check for credential leaks in logs
+```
+<Task subagent_type="general-purpose" run_in_background="true">
+Run SAST scan on {tool} MCP:
+- npm audit
+- Check for injection vulnerabilities
+- Scan for insecure patterns
+Report all findings with severity
+</Task>
 
-3. **Dependency check**
-   - Review dependencies for CVEs
-   - Update vulnerable packages
+<Task subagent_type="general-purpose" run_in_background="true">
+Run secret detection on {tool} MCP:
+- Scan for hardcoded credentials
+- Check for API keys in code
+- Verify no secrets in logs
+- Check .env.example has only fake values
+</Task>
 
-4. **Configuration review**
-   - Verify all config is externalized
-   - Check for least-privilege patterns
+<Task subagent_type="general-purpose" run_in_background="true">
+Run dependency vulnerability scan on {tool} MCP:
+- Check all dependencies for CVEs
+- Identify outdated packages
+- Flag critical vulnerabilities
+</Task>
+
+<Task subagent_type="general-purpose" run_in_background="true">
+Run configuration security review on {tool} MCP:
+- Verify all config is externalized
+- Check for least-privilege patterns
+- Validate input sanitization
+</Task>
+```
+
+**After parallel scans complete:**
+1. Aggregate all findings
+2. Prioritize by severity (Critical > High > Medium > Low)
+3. Fix critical/high issues in parallel
+4. Re-scan after fixes
 
 **Block release if**: Critical SAST issues, CVEs, or detected secrets
 
 ### Phase 5: Optimization (use Sonnet)
 
-1. **Measure performance**
-   - Startup time (target: <1s)
-   - Request latency (target: <100ms avg)
-   - Memory usage
+**Run performance analysis IN PARALLEL:**
 
-2. **Optimize**
-   - Add caching where appropriate
-   - Implement connection pooling
-   - Optimize hot paths
+```
+<Task subagent_type="general-purpose" run_in_background="true">
+Measure {tool} MCP startup performance:
+- Time cold start
+- Time warm start
+- Identify slow initialization paths
+Target: < 1s startup
+</Task>
 
-3. **Re-measure and iterate**
+<Task subagent_type="general-purpose" run_in_background="true">
+Measure {tool} MCP request latency:
+- Profile each tool call
+- Identify slow operations
+- Check for N+1 API call patterns
+Target: < 500ms per tool call
+</Task>
+
+<Task subagent_type="general-purpose" run_in_background="true">
+Analyze {tool} MCP for optimization anti-patterns:
+- Check for shell spawning (FORBIDDEN)
+- Verify connection pooling exists
+- Verify token caching exists
+- Check for singleton client pattern
+</Task>
+
+<Task subagent_type="general-purpose" run_in_background="true">
+Profile {tool} MCP memory usage:
+- Identify memory leaks
+- Check for unbounded caches
+- Verify cleanup on shutdown
+</Task>
+```
+
+**After analysis, apply optimizations IN PARALLEL:**
+
+```
+<Task subagent_type="general-purpose" run_in_background="true">
+Optimize {tool} MCP startup: {specific_issues_found}
+</Task>
+
+<Task subagent_type="general-purpose" run_in_background="true">
+Optimize {tool} MCP latency: {specific_issues_found}
+</Task>
+```
+
+**Re-measure and iterate until targets met**
 
 ### Phase 6: Documentation
 
-1. **Generate README.md**
-   - Quick start guide
-   - Configuration reference
-   - Usage examples
+**Generate all documentation IN PARALLEL:**
 
-2. **Update CLAUDE.md**
-   - Document architecture
-   - List available tools
-   - Note any gotchas
+```
+<Task subagent_type="general-purpose" run_in_background="true">
+Generate README.md for {tool} MCP:
+- Quick start guide
+- Installation instructions
+- Configuration reference (all env vars)
+- Usage examples for each tool
+</Task>
+
+<Task subagent_type="general-purpose" run_in_background="true">
+Generate CLAUDE.md for {tool} MCP:
+- Architecture overview
+- List all available tools with descriptions
+- Note any gotchas or limitations
+- Document auth flow
+</Task>
+
+<Task subagent_type="general-purpose" run_in_background="true">
+Generate CHANGELOG.md for {tool} MCP:
+- Initial release entry
+- All features implemented
+- Performance characteristics
+</Task>
+
+<Task subagent_type="general-purpose" run_in_background="true">
+Publish documentation to Confluence (if configured):
+- Create page under Engineering/MCP Servers/{tool}
+- Include all documentation
+- Link to GitHub repo
+</Task>
+```
+
+**After documentation generation, create local tracking file:**
+
+Create `.thesun/publish-history.md` in the MCP directory:
+```markdown
+# {Tool} MCP Publish History
+
+This file tracks where documentation has been published.
+DO NOT commit to public repositories.
+
+## Confluence
+- Page: Engineering/MCP Servers/{tool}
+- URL: {confluence_url}
+- Last Updated: {timestamp}
+
+## GitHub
+- Repo: {github_repo_url}
+- Last Commit: {commit_sha}
+- Last Updated: {timestamp}
+
+## Internal Wiki
+- Page: {wiki_page}
+- URL: {wiki_url}
+- Last Updated: {timestamp}
+```
+
+**IMPORTANT**: The `.thesun/` directory should be in `.gitignore` - this is internal tracking only, NOT for public repositories.
 
 ## Self-Monitoring
 
@@ -196,3 +360,69 @@ When finished, provide:
 3. **Always test** - never ship without passing tests
 4. **Always scan** - security gates are non-negotiable
 5. **Iterate until done** - don't give up after first failure
+
+## MANDATORY Optimization Requirements
+
+**See `.claude-plugin/OPTIMIZATION_PRINCIPLES.md` for full details.**
+
+Every generated MCP MUST include these patterns from the START:
+
+### 1. Connection Pooling (REQUIRED)
+```typescript
+const httpsAgent = new https.Agent({
+  keepAlive: true,
+  maxSockets: 50,
+  maxFreeSockets: 10,
+});
+```
+
+### 2. Singleton Client (REQUIRED)
+```typescript
+let client: AxiosInstance | null = null;
+function getClient(): AxiosInstance {
+  if (!client) {
+    client = axios.create({ httpsAgent, /* ... */ });
+  }
+  return client;
+}
+```
+
+### 3. Token Caching (REQUIRED)
+```typescript
+let tokenCache: { token: string; expiresAt: number } | null = null;
+async function getToken(): Promise<string> {
+  if (tokenCache && Date.now() < tokenCache.expiresAt - 60000) {
+    return tokenCache.token;
+  }
+  // ... refresh and cache
+}
+```
+
+### 4. Parallel Batch Operations (REQUIRED for bulk tools)
+```typescript
+async function batchFetch<T>(ids: string[], fetcher: (id: string) => Promise<T>): Promise<T[]> {
+  const chunks = chunkArray(ids, 10);
+  const results: T[] = [];
+  for (const chunk of chunks) {
+    results.push(...await Promise.all(chunk.map(fetcher)));
+  }
+  return results;
+}
+```
+
+### 5. NO Shell Spawning (FORBIDDEN)
+Never use child_process, curl, wget, or any shell commands for HTTP operations.
+Use native axios/fetch ONLY.
+
+### 6. Graceful Startup (REQUIRED)
+MCP must start without credentials - validate only when tools are called.
+
+## Performance Targets
+
+| Metric | Target | FAIL if exceeded |
+|--------|--------|------------------|
+| Tool call latency | < 500ms | > 2s |
+| Bulk operation (100 items) | < 5s | > 30s |
+| Startup time | < 1s | > 3s |
+
+**A slow MCP is a broken MCP. Optimize from the start, don't retrofit.**

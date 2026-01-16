@@ -7,7 +7,7 @@
  *
  * KEY FEATURES:
  * - Uses ABSOLUTE paths for all output (never relative to current directory)
- * - All generated MCPs are registered globally in ~/.claude/mcp.json
+ * - All generated MCPs are registered globally in ~/.claude/user-mcps.json
  * - Supports bob instances for isolated parallel builds
  * - Model selection: Opus for planning/security, Sonnet for implementation
  */
@@ -42,7 +42,7 @@ thesun handles EVERYTHING autonomously:
 - Creates OR fixes MCP server code
 - Writes comprehensive tests
 - Runs security scans
-- Registers globally in ~/.claude/.claude.json
+- Registers globally in ~/.claude/user-mcps.json
 
 **CREATE Examples:**
 - thesun({ target: "tesla" }) - Creates Tesla Fleet API MCP
@@ -140,8 +140,9 @@ class TheSunMcpServer {
     const input = TheSunInput.parse(args);
 
     const homeDir = homedir();
-    // CRITICAL: Use .claude.json NOT mcp.json - this is where Claude actually reads mcpServers
-    const mcpConfigPath = join(homeDir, '.claude', '.claude.json');
+    // CRITICAL: Use user-mcps.json - this is auto-loaded by Claude without needing whitelist
+    // DO NOT use .claude.json (not read for MCPs) or mcp.json (needs whitelist in settings.json)
+    const mcpConfigPath = join(homeDir, '.claude', 'user-mcps.json');
 
     // Parse targets: support array, comma-separated string, or single target
     let allTargets: string[] = [];
@@ -250,7 +251,7 @@ Every generated MCP MUST include easy installation:
 #!/bin/bash
 set -e
 npm install && npm run build
-echo "Add to ~/.claude/mcp.json or run: npx ${input.target}-mcp"
+echo "Add to ~/.claude/user-mcps.json or run: npx ${input.target}-mcp"
 \`\`\`
 
 **install.ps1** (Windows):
@@ -303,7 +304,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         type: "text",
         text: JSON.stringify({
           error: "Authentication required",
-          message: "Configure credentials in ~/.claude/.claude.json",
+          message: "Configure credentials in ~/.claude/user-mcps.json",
           required: ["${input.target.toUpperCase()}_API_URL", "${input.target.toUpperCase()}_API_KEY"]
         }, null, 2)
       }],
@@ -347,10 +348,10 @@ cd "${outputDir}" && npm install && npm run build
 After successful build, register the MCP as a **USER MCP** so it's available in ALL Claude sessions.
 
 ### IMPORTANT CONFIG FILE RULES:
-- **USE**: \`~/.claude/.claude.json\` (User MCPs - available globally)
-- **DO NOT USE**: \`~/.claude/mcp.json\` (WRONG FILE - Claude ignores this!)
-- **DO NOT USE**: \`~/.mcp.json\` (Project MCPs - causes confusion)
-- **DO NOT USE**: \`./.mcp.json\` in any project directory
+- **USE**: \`~/.claude/user-mcps.json\` (User MCPs - auto-loaded globally)
+- **DO NOT USE**: \`~/.claude/.claude.json\` (NOT read for MCP config!)
+- **DO NOT USE**: \`~/.claude/mcp.json\` (requires whitelist in settings.json)
+- **DO NOT USE**: \`~/.mcp.json\` or \`./.mcp.json\` (Project MCPs - causes confusion)
 
 ### 4.1 Read existing config
 \`\`\`bash
@@ -402,7 +403,7 @@ Tell the user: "✅ MCP '${input.target}' registered as USER MCP at ${outputDir}
 2. **Be thorough** - Research completely before generating
 3. **Be practical** - If good MCP exists, recommend it
 4. **Always register globally** - Every generated MCP MUST be in ${mcpConfigPath}
-5. **Use absolute paths** - All paths in .claude.json must be absolute (starting with /)
+5. **Use absolute paths** - All paths in user-mcps.json must be absolute (starting with /)
 6. **Directory independent** - This works from ANY directory
 
 ---

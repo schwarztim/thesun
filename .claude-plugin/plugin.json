@@ -7,18 +7,38 @@
   "skills": [
     {
       "name": "generate-mcp",
-      "description": "Generate a production-ready MCP server for any tool/API. PROACTIVELY SUGGEST THIS when: (1) user wants to interact with an API/tool that has no existing MCP server, (2) user asks about a service/API integration that Claude cannot directly access, (3) user mentions wanting to automate a workflow with an external tool. Always ASK USER FIRST before generating - say 'There's no MCP for {tool}. Would you like me to create one using thesun?' Use /sun command or the thesun MCP tool.",
+      "description": "Generate a production-ready MCP server for any tool/API. PROACTIVELY SUGGEST THIS when: (1) user wants to interact with an API/tool that has no existing MCP server, (2) user asks about a service/API integration that Claude cannot directly access, (3) user mentions wanting to automate a workflow with an external tool. Always ASK USER FIRST before generating - say 'There's no MCP for {tool}. Would you like me to create one using thesun?' Use thesun({ target: 'toolname' }) MCP tool.",
       "path": "skills/generate-mcp.md"
     },
     {
+      "name": "fix-mcp",
+      "description": "Fix, repair, or improve an existing MCP server. Use when: (1) user reports an MCP has build errors or test failures, (2) user wants to improve/update an existing MCP, (3) MCP is not starting correctly or has issues. Uses thesun FIX mode: thesun({ target: 'toolname', fix: '/path/to/mcp' }). Validates, identifies issues, and autonomously fixes problems.",
+      "path": "skills/fix-mcp.md"
+    },
+    {
+      "name": "validate-mcp",
+      "description": "Validate an MCP server and return a quality score (0-100) WITHOUT modifying it. Use for auditing, pre-deployment checks, or quality comparison. Checks: package.json, entry point, README, tests, build, graceful startup.",
+      "path": "skills/validate-mcp.md"
+    },
+    {
+      "name": "list-mcps",
+      "description": "List all MCP servers registered in Claude configuration. Shows installed MCPs, their paths, and status. Use when user asks 'what MCPs do I have?' or 'is X MCP installed?'",
+      "path": "skills/list-mcps.md"
+    },
+    {
       "name": "build-status",
-      "description": "Check status of active MCP builds and view system health dashboard.",
+      "description": "Check status of active MCP builds and view system health dashboard. Use when user asks about build progress, costs, or system health.",
       "path": "skills/build-status.md"
     },
     {
       "name": "research-api",
-      "description": "Research and discover all APIs for a tool without generating code. Use for exploration and planning.",
+      "description": "Research and discover all APIs for a tool WITHOUT generating code. Use for exploration and planning before committing to full MCP generation. Finds docs, OpenAPI specs, existing MCPs, and gaps.",
       "path": "skills/research-api.md"
+    },
+    {
+      "name": "update-mcps",
+      "description": "Proactively search the web to improve and update MCP servers. Finds new API features, security vulnerabilities, and best practices from other implementations. Works on both local and non-local MCPs. Documents changes on Confluence and GitHub. Use for maintenance, security audits, or keeping MCPs current.",
+      "path": "skills/update-mcps.md"
     }
   ],
   "agents": [
@@ -36,6 +56,11 @@
       "name": "api-researcher",
       "description": "Researches and catalogs all APIs for a tool. Finds existing MCPs, vendor docs, OpenAPI specs, and identifies gaps.",
       "path": "agents/api-researcher.md"
+    },
+    {
+      "name": "mcp-updater",
+      "description": "Autonomous agent that searches the web for MCP improvements and applies updates. Monitors API changelogs, security advisories, and community best practices. Updates both local and non-local MCPs. Documents changes on Confluence and GitHub.",
+      "path": "agents/mcp-updater.md"
     }
   ]
 }
