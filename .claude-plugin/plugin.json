@@ -21,18 +21,6 @@
       "path": "skills/research-api.md"
     }
   ],
-  "commands": [
-    {
-      "name": "sun",
-      "description": "Generate MCP servers autonomously",
-      "path": "commands/sun.md"
-    },
-    {
-      "name": "sun-status",
-      "description": "View thesun build status and system health",
-      "path": "commands/status.md"
-    }
-  ],
   "agents": [
     {
       "name": "meta-planner",
