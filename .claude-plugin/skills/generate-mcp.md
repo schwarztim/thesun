@@ -7,13 +7,42 @@ description: Generate a production-ready MCP server for any tool/API
 
 This skill generates complete, production-ready MCP servers autonomously.
 
-## When to Use
+## IMPORTANT: Ask User First
 
-Use this skill when:
-- User asks to "create an MCP server for X"
+When you detect the user wants to interact with a tool/API that has no existing MCP:
+
+**DO NOT** immediately generate. Instead say:
+
+> "There's no MCP server for {tool}. Would you like me to create one using thesun?
+> This will autonomously research the API, generate a TypeScript MCP server, run tests,
+> and register it globally so you can use it in any future conversation."
+
+Wait for user confirmation before proceeding.
+
+## When to SUGGEST This Skill
+
+Proactively suggest this skill when:
+- User mentions a tool/service that has no MCP (check available tools first)
+- User asks "can Claude connect to X?" where X has no MCP
+- User wants to automate something with an external API
+- User asks about integrating with a service
+
+## When to Use (After Confirmation)
+
+Execute this skill when:
+- User explicitly asks to "create an MCP server for X"
+- User confirms they want to generate after your suggestion
 - User wants to "integrate with X API"
 - User needs to "automate X tool"
 - A workflow requires an MCP that doesn't exist
+
+## Can Also IMPROVE Existing MCPs
+
+This skill can also validate and improve existing MCPs:
+- Run `thesun({ target: "name", fix: "/path/to/mcp" })` to fix issues
+- Validates: package.json, tests, README, .env.example, architecture docs, git repo
+- Provides score 0-100 and improvement recommendations
+- Loops back to fix failures automatically (up to 3 attempts)
 
 ## How It Works
 
@@ -104,3 +133,40 @@ If generation fails:
 2. Most issues are auto-remediated via iteration
 3. Persistent failures are documented in the output
 4. Unresolved issues require manual intervention
+
+## Validation & Feedback Loop
+
+After generation completes, a final validation phase runs to ensure ALL requirements are met:
+
+### Validation Checks (ALL run in PARALLEL)
+- ✅ package.json exists
+- ✅ Entry point (src/index.ts) exists
+- ✅ README.md exists
+- ✅ .env.example exists
+- ✅ Test files exist
+- ✅ Architecture documentation exists
+- ✅ Build passes (`npm run build`)
+- ✅ Tests pass (`npm test`)
+- ✅ Git repository initialized
+- ✅ Git remote configured (GitHub)
+
+### Remediation Loop
+If any validation fails:
+1. System identifies failed requirements
+2. Loops back to GENERATING phase
+3. Fixes the specific issues
+4. Re-runs validation
+5. Repeats up to 3 times before failing
+
+### Using FIX Mode for Existing MCPs
+
+To improve an existing MCP:
+```
+thesun({ target: "toolname", fix: "/path/to/existing-mcp" })
+```
+
+This will:
+1. Validate the existing MCP (score 0-100)
+2. Identify missing items and issues
+3. Autonomously fix problems
+4. Iterate until all requirements met or max attempts reached

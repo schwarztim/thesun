@@ -16,7 +16,8 @@ const VALID_TRANSITIONS: Record<BuildPhase, BuildPhase[]> = {
   [BuildPhase.TESTING]: [BuildPhase.SECURITY_SCAN, BuildPhase.GENERATING, BuildPhase.FAILED], // Can loop back
   [BuildPhase.SECURITY_SCAN]: [BuildPhase.OPTIMIZING, BuildPhase.GENERATING, BuildPhase.FAILED], // Can loop back
   [BuildPhase.OPTIMIZING]: [BuildPhase.VALIDATING, BuildPhase.TESTING, BuildPhase.FAILED], // Can loop back
-  [BuildPhase.VALIDATING]: [BuildPhase.COMPLETED, BuildPhase.TESTING, BuildPhase.FAILED], // Can loop back
+  [BuildPhase.VALIDATING]: [BuildPhase.VALIDATE_REQUIREMENTS, BuildPhase.TESTING, BuildPhase.FAILED], // Can loop back
+  [BuildPhase.VALIDATE_REQUIREMENTS]: [BuildPhase.COMPLETED, BuildPhase.GENERATING, BuildPhase.FAILED], // Final check, can remediate
   [BuildPhase.COMPLETED]: [], // Terminal state
   [BuildPhase.FAILED]: [], // Terminal state
 };
@@ -140,6 +141,21 @@ export function shouldLoopBack(state: BuildState): { shouldLoop: boolean; target
         shouldLoop: true,
         targetPhase: BuildPhase.GENERATING,
         reason: `Coverage ${state.testing.coverage}% below 70% threshold`,
+      };
+    }
+  }
+
+  // Check requirement validation failures - remediation loop
+  if (state.phase === BuildPhase.VALIDATE_REQUIREMENTS && state.requirementValidation) {
+    const maxRemediationAttempts = 3;
+    if (
+      state.requirementValidation.failed > 0 &&
+      state.requirementValidation.remediationAttempts < maxRemediationAttempts
+    ) {
+      return {
+        shouldLoop: true,
+        targetPhase: BuildPhase.GENERATING,
+        reason: `${state.requirementValidation.failed} requirements failed, remediation attempt ${state.requirementValidation.remediationAttempts + 1}/${maxRemediationAttempts}`,
       };
     }
   }

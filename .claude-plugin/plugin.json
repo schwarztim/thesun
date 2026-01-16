@@ -7,7 +7,7 @@
   "skills": [
     {
       "name": "generate-mcp",
-      "description": "Generate a production-ready MCP server for any tool/API. Use when the user wants to create an MCP server, integrate with a new API, or automate tool creation.",
+      "description": "Generate a production-ready MCP server for any tool/API. PROACTIVELY SUGGEST THIS when: (1) user wants to interact with an API/tool that has no existing MCP server, (2) user asks about a service/API integration that Claude cannot directly access, (3) user mentions wanting to automate a workflow with an external tool. Always ASK USER FIRST before generating - say 'There's no MCP for {tool}. Would you like me to create one using thesun?' Use /sun command or the thesun MCP tool.",
       "path": "skills/generate-mcp.md"
     },
     {

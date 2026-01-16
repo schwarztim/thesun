@@ -153,6 +153,7 @@ export function selectModelForPhase(phase: BuildPhase, iterationCount = 0): Clau
     security_scan: 'security_review',
     optimizing: 'performance_optimization',
     validating: 'validation',
+    validate_requirements: 'validation', // Final requirement validation
     completed: 'simple_lookup',
     failed: 'simple_lookup',
   };

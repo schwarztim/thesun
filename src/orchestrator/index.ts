@@ -12,6 +12,7 @@ import {
   BuildPhase,
   OrchestratorConfig,
   OrchestratorConfigSchema,
+  RequirementSet,
 } from '../types/index.js';
 import {
   createInitialState,
@@ -19,6 +20,13 @@ import {
   getNextPhase,
   isTerminalState,
 } from './state-machine.js';
+import {
+  RequirementTracker,
+  DiscoveryLogger,
+  validateExistingMcp,
+  generateValidationRules,
+  runAllValidations,
+} from '../tracking/index.js';
 import { BobInstanceManager, getBobManager } from '../bob/instance-manager.js';
 import { ApiResearcher, getApiResearcher } from '../discovery/api-researcher.js';
 import { selectModelForPhase } from '../agents/model-selector.js';
@@ -45,6 +53,10 @@ export class Orchestrator extends EventEmitter {
   private activeBuilds: Map<string, BuildState> = new Map();
   private buildQueue: ToolSpec[] = [];
   private isProcessing = false;
+
+  // Tracking for requirements and discovery
+  private requirementTrackers: Map<string, RequirementTracker> = new Map();
+  private discoveryLoggers: Map<string, DiscoveryLogger> = new Map();
 
   constructor(config?: Partial<OrchestratorConfig>) {
     super();
@@ -265,6 +277,9 @@ export class Orchestrator extends EventEmitter {
       case BuildPhase.VALIDATING:
         return this.executeValidationPhase(tool, state, bobInstanceId);
 
+      case BuildPhase.VALIDATE_REQUIREMENTS:
+        return this.executeRequirementValidationPhase(tool, state, bobInstanceId);
+
       default:
         return state;
     }
@@ -438,6 +453,85 @@ Report any findings with severity levels.`;
     });
 
     return state;
+  }
+
+  /**
+   * Requirement Validation phase: Check ALL requirements are met
+   * Runs in PARALLEL for speed
+   */
+  private async executeRequirementValidationPhase(
+    tool: ToolSpec,
+    state: BuildState,
+    bobInstanceId: string
+  ): Promise<BuildState> {
+    const buildLogger = createBuildLogger(state.id, tool.name);
+    buildLogger.info('Running requirement validation (parallel)');
+
+    const mcpPath = `${this.config.workspace}/${tool.name}-mcp`;
+
+    // Run MCP validation (checks run in parallel internally)
+    const mcpValidation = await validateExistingMcp(mcpPath);
+
+    buildLogger.info('MCP validation complete', {
+      score: mcpValidation.score,
+      missingItems: mcpValidation.missingItems.length,
+    });
+
+    // Get requirement tracker for this build
+    let tracker = this.requirementTrackers.get(state.id);
+    if (!tracker) {
+      // Create a default requirement tracker if not already tracked
+      tracker = new RequirementTracker(`Generate MCP for ${tool.name}`);
+      this.requirementTrackers.set(state.id, tracker);
+    }
+
+    // Generate and run validation rules IN PARALLEL
+    const rules = generateValidationRules(tracker.getRequirementSet(), this.config.workspace);
+    const validationResults = await runAllValidations(rules);
+
+    // Count passed/failed
+    let passed = 0;
+    let failed = 0;
+    const failedRequirements: string[] = [];
+
+    for (const [ruleId, result] of validationResults) {
+      if (result.passed) {
+        passed++;
+      } else {
+        failed++;
+        failedRequirements.push(result.message);
+      }
+    }
+
+    // Include MCP validation failures
+    if (mcpValidation.score < 100) {
+      failed += mcpValidation.missingItems.length;
+      failedRequirements.push(...mcpValidation.missingItems);
+    } else {
+      passed += 10; // 10 checks in MCP validation
+    }
+
+    const currentRemediationAttempts = state.requirementValidation?.remediationAttempts ?? 0;
+    const allMet = failed === 0;
+
+    buildLogger.info('Requirement validation results', {
+      passed,
+      failed,
+      allMet,
+      remediationAttempt: currentRemediationAttempts,
+    });
+
+    return {
+      ...state,
+      requirementValidation: {
+        totalRequirements: passed + failed,
+        passed,
+        failed,
+        failedRequirements,
+        remediationAttempts: allMet ? currentRemediationAttempts : currentRemediationAttempts + 1,
+        allMet,
+      },
+    };
   }
 
   /**

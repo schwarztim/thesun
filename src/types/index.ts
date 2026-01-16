@@ -38,6 +38,7 @@ export const BuildPhase = {
   SECURITY_SCAN: 'security_scan',
   OPTIMIZING: 'optimizing',
   VALIDATING: 'validating',
+  VALIDATE_REQUIREMENTS: 'validate_requirements', // NEW: Final check all requirements met
   COMPLETED: 'completed',
   FAILED: 'failed',
 } as const;
@@ -49,7 +50,8 @@ export const BuildStateSchema = z.object({
   toolName: z.string(),
   phase: z.enum([
     'pending', 'discovering', 'generating', 'testing',
-    'security_scan', 'optimizing', 'validating', 'completed', 'failed'
+    'security_scan', 'optimizing', 'validating', 'validate_requirements',
+    'completed', 'failed'
   ]),
   bobInstanceId: z.string().uuid().optional(),
   startedAt: z.date().optional(),
@@ -94,6 +96,16 @@ export const BuildStateSchema = z.object({
     startupTimeMs: z.number().optional(),
     avgRequestTimeMs: z.number().optional(),
     memoryUsageMb: z.number().optional(),
+  }).optional(),
+
+  // Requirement validation results
+  requirementValidation: z.object({
+    totalRequirements: z.number().default(0),
+    passed: z.number().default(0),
+    failed: z.number().default(0),
+    failedRequirements: z.array(z.string()).default([]),
+    remediationAttempts: z.number().default(0),
+    allMet: z.boolean().default(false),
   }).optional(),
 });
 
@@ -265,3 +277,157 @@ export const OrchestratorConfigSchema = z.object({
 });
 
 export type OrchestratorConfig = z.infer<typeof OrchestratorConfigSchema>;
+
+// ============================================================================
+// Requirement Tracking Types
+// ============================================================================
+
+export const RequirementTypeSchema = z.enum([
+  'generate_mcp',        // Generate an MCP server
+  'run_archcheck',       // Run archcheck skill
+  'publish_github',      // Publish to GitHub
+  'create_confluence',   // Create Confluence page
+  'run_tests',           // Run test suite
+  'security_scan',       // Run security scan
+  'custom',              // Custom requirement
+]);
+
+export type RequirementType = z.infer<typeof RequirementTypeSchema>;
+
+export const RequirementStatusSchema = z.enum([
+  'pending',
+  'in_progress',
+  'completed',
+  'failed',
+  'skipped',
+]);
+
+export type RequirementStatus = z.infer<typeof RequirementStatusSchema>;
+
+export const RequirementSchema = z.object({
+  id: z.string(),
+  type: RequirementTypeSchema,
+  description: z.string(),
+  target: z.string().optional(),           // e.g., tool name, page title
+  status: RequirementStatusSchema.default('pending'),
+  startedAt: z.date().optional(),
+  completedAt: z.date().optional(),
+  error: z.string().optional(),
+  evidence: z.object({                     // Proof of completion
+    files: z.array(z.string()).optional(), // Files created
+    urls: z.array(z.string()).optional(),  // URLs (GitHub, Confluence)
+    commands: z.array(z.string()).optional(), // Commands run
+    outputs: z.array(z.string()).optional(),  // Command outputs
+  }).optional(),
+  dependencies: z.array(z.string()).optional(), // Other requirement IDs that must complete first
+});
+
+export type Requirement = z.infer<typeof RequirementSchema>;
+
+export const RequirementSetSchema = z.object({
+  id: z.string().uuid(),
+  originalRequest: z.string(),             // Raw user request
+  parsedAt: z.date(),
+  requirements: z.array(RequirementSchema),
+  targets: z.array(z.string()),            // All tools/targets extracted
+  validationRules: z.array(z.object({
+    requirementId: z.string(),
+    rule: z.string(),                      // e.g., "file_exists", "url_accessible", "tests_pass"
+    params: z.record(z.unknown()).optional(),
+  })).optional(),
+});
+
+export type RequirementSet = z.infer<typeof RequirementSetSchema>;
+
+// ============================================================================
+// Discovery Logging Types
+// ============================================================================
+
+export const DiscoverySourceSchema = z.object({
+  type: z.enum(['web_search', 'openapi_spec', 'existing_mcp', 'vendor_docs', 'github', 'npm']),
+  url: z.string(),
+  title: z.string().optional(),
+  relevance: z.number().min(0).max(1).optional(), // 0-1 relevance score
+  usedInGeneration: z.boolean().default(false),
+  timestamp: z.date(),
+  content: z.string().optional(),          // Summary or key info extracted
+});
+
+export type DiscoverySource = z.infer<typeof DiscoverySourceSchema>;
+
+export const DiscoveryLogSchema = z.object({
+  toolName: z.string(),
+  startedAt: z.date(),
+  completedAt: z.date().optional(),
+  sources: z.array(DiscoverySourceSchema),
+  summary: z.object({
+    totalSourcesFound: z.number(),
+    sourcesUsed: z.number(),
+    openApiSpecsFound: z.number(),
+    existingMcpsFound: z.number(),
+    vendorDocsFound: z.number(),
+  }).optional(),
+  decisions: z.array(z.object({            // Log why certain sources were used/rejected
+    source: z.string(),
+    decision: z.enum(['used', 'rejected', 'reference_only']),
+    reason: z.string(),
+  })).optional(),
+});
+
+export type DiscoveryLog = z.infer<typeof DiscoveryLogSchema>;
+
+// ============================================================================
+// Validation Types
+// ============================================================================
+
+export const ValidationRuleSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  type: z.enum([
+    'file_exists',           // Check file exists at path
+    'directory_exists',      // Check directory exists
+    'url_accessible',        // Check URL is accessible
+    'command_succeeds',      // Run command, check exit code 0
+    'file_contains',         // Check file contains string/pattern
+    'git_remote_exists',     // Check git remote is configured
+    'confluence_page_exists', // Check Confluence page exists
+    'tests_pass',            // npm test passes
+    'build_succeeds',        // npm run build passes
+    'custom',                // Custom validation function
+  ]),
+  params: z.record(z.unknown()),
+});
+
+export type ValidationRule = z.infer<typeof ValidationRuleSchema>;
+
+export const ValidationResultSchema = z.object({
+  ruleId: z.string(),
+  passed: z.boolean(),
+  message: z.string(),
+  details: z.record(z.unknown()).optional(),
+  timestamp: z.date(),
+});
+
+export type ValidationResult = z.infer<typeof ValidationResultSchema>;
+
+export const RequirementValidationReportSchema = z.object({
+  requirementSetId: z.string(),
+  validatedAt: z.date(),
+  allPassed: z.boolean(),
+  results: z.array(z.object({
+    requirementId: z.string(),
+    requirementDescription: z.string(),
+    passed: z.boolean(),
+    validationResults: z.array(ValidationResultSchema),
+    remediationNeeded: z.boolean(),
+    remediationSteps: z.array(z.string()).optional(),
+  })),
+  summary: z.object({
+    totalRequirements: z.number(),
+    passed: z.number(),
+    failed: z.number(),
+    skipped: z.number(),
+  }),
+});
+
+export type RequirementValidationReport = z.infer<typeof RequirementValidationReportSchema>;
