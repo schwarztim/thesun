@@ -1,5 +1,5 @@
 ---
-name: mcp
+name: sun
 description: Generate MCP servers autonomously
 arguments:
   - name: tool
@@ -13,13 +13,13 @@ arguments:
     required: false
 ---
 
-# /mcp Command
+# /sun Command
 
 Generate a production-ready MCP server autonomously.
 
 ## What This Does
 
-When you run `/mcp <tool>`, the system:
+When you run `/sun <tool>`, the system:
 
 1. **Researches the API** - Finds documentation, existing MCPs, OpenAPI specs
 2. **Generates complete MCP server** - TypeScript, tests, documentation
@@ -31,9 +31,9 @@ When you run `/mcp <tool>`, the system:
 ## Usage Examples
 
 ```
-/mcp dynatrace
-/mcp servicenow --output=./servicenow-mcp
-/mcp slack --spec=https://api.slack.com/specs/openapi/v2/slack_web.json
+/sun dynatrace
+/sun servicenow --output=./servicenow-mcp
+/sun slack --spec=https://api.slack.com/specs/openapi/v2/slack_web.json
 ```
 
 ## What You Need to Provide

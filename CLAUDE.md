@@ -39,10 +39,10 @@ thesun is a Claude Code plugin. After installation, use these commands:
 
 ```bash
 # Generate an MCP server autonomously
-/mcp dynatrace
+/sun dynatrace
 
 # Generate with specific output directory
-/mcp servicenow --output=./servicenow-mcp
+/sun servicenow --output=./servicenow-mcp
 
 # Check build status
 /sun-status
@@ -51,7 +51,7 @@ thesun is a Claude Code plugin. After installation, use these commands:
 # Use the research-api skill via natural language
 ```
 
-The `/mcp` command spawns the `mcp-builder` agent which runs autonomously through all phases.
+The `/sun` command spawns the `mcp-builder` agent which runs autonomously through all phases.
 
 ## Architecture
 
@@ -59,7 +59,7 @@ The `/mcp` command spawns the `mcp-builder` agent which runs autonomously throug
 thesun/
 ├── .claude-plugin/           # Plugin configuration
 │   ├── plugin.json          # Plugin manifest
-│   ├── commands/            # Slash commands (/mcp, /sun-status)
+│   ├── commands/            # Slash commands (/sun, /sun-status)
 │   ├── skills/              # Invocable skills
 │   └── agents/              # Autonomous agents
 ├── governance/              # Watcher and supervisor system

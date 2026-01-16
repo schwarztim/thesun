@@ -23,9 +23,9 @@
   ],
   "commands": [
     {
-      "name": "mcp",
+      "name": "sun",
       "description": "Generate MCP servers autonomously",
-      "path": "commands/mcp.md"
+      "path": "commands/sun.md"
     },
     {
       "name": "sun-status",
