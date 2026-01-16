@@ -300,32 +300,63 @@ Publish documentation to Confluence (if configured):
 </Task>
 ```
 
-**After documentation generation, create local tracking file:**
+**MANDATORY: Create publish tracking (DO NOT SKIP):**
 
-Create `.thesun/publish-history.md` in the MCP directory:
-```markdown
+Every MCP MUST have publish tracking. Execute these commands:
+
+```bash
+# Create tracking directory
+mkdir -p {output_dir}/.thesun
+
+# Add to gitignore FIRST (prevents accidental commits)
+grep -q "^\.thesun/$" {output_dir}/.gitignore 2>/dev/null || echo ".thesun/" >> {output_dir}/.gitignore
+
+# Create publish history file
+cat > {output_dir}/.thesun/publish-history.md << 'PUBHIST'
 # {Tool} MCP Publish History
 
 This file tracks where documentation has been published.
-DO NOT commit to public repositories.
+⚠️ DO NOT commit to public repositories - must be in .gitignore
+
+## Local
+- Path: {output_dir}
+- Created: {timestamp}
+- Version: 1.0.0
 
 ## Confluence
 - Page: Engineering/MCP Servers/{tool}
-- URL: {confluence_url}
-- Last Updated: {timestamp}
+- URL: [to be filled after publish]
+- Last Updated: [timestamp]
+- Status: [ ] Not published / [x] Published
 
 ## GitHub
-- Repo: {github_repo_url}
-- Last Commit: {commit_sha}
-- Last Updated: {timestamp}
+- Repo: [to be filled]
+- Last Release: [version]
+- Last Commit: [sha]
+- Last Updated: [timestamp]
+- Status: [ ] Not published / [x] Published
 
-## Internal Wiki
-- Page: {wiki_page}
-- URL: {wiki_url}
-- Last Updated: {timestamp}
+## Changelog
+| Date | Version | Changes | Deployed To |
+|------|---------|---------|-------------|
+| {timestamp} | 1.0.0 | Initial release | Local |
+
+PUBHIST
 ```
 
-**IMPORTANT**: The `.thesun/` directory should be in `.gitignore` - this is internal tracking only, NOT for public repositories.
+**VERIFICATION (REQUIRED):**
+```bash
+# Verify .thesun is gitignored
+grep "\.thesun" {output_dir}/.gitignore || echo "ERROR: .thesun not in gitignore!"
+
+# Verify publish-history exists
+test -f {output_dir}/.thesun/publish-history.md && echo "✓ Publish history created"
+```
+
+**Update publish-history.md EVERY TIME you deploy to:**
+- Confluence: Update URL, status, timestamp
+- GitHub: Update repo URL, release version, commit SHA
+- Any other remote system
 
 ## Self-Monitoring
 

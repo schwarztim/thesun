@@ -558,41 +558,71 @@ Report back with:
    - Flag security issues for immediate attention
    - Don't auto-deploy breaking changes
 
-## Publish History Tracking (MANDATORY)
+## Publish History Tracking (MANDATORY - DO NOT SKIP)
 
-**Every time documentation is updated or published, update the local tracking file.**
+**Every deployment to remote systems MUST be tracked locally.**
 
-After any documentation publish (Confluence, GitHub, Wiki), update `.thesun/publish-history.md`:
+### Step 1: Ensure Tracking Infrastructure Exists
 
-```markdown
-# {Tool} MCP Publish History
+```bash
+# For each MCP being updated, run:
+MCP_DIR="/path/to/mcp"
 
-This file tracks where documentation has been published.
-DO NOT commit to public repositories.
+# Create tracking directory if missing
+mkdir -p "$MCP_DIR/.thesun"
 
-## Confluence
-- Page: Engineering/MCP Servers/{tool}
-- URL: {confluence_url}
-- Last Updated: {timestamp}
-- Changes: {summary_of_changes}
+# CRITICAL: Add to gitignore BEFORE any commits
+grep -q "^\.thesun/$" "$MCP_DIR/.gitignore" 2>/dev/null || echo ".thesun/" >> "$MCP_DIR/.gitignore"
 
-## GitHub
-- Repo: {github_repo_url}
-- Last Release: {version}
-- Last Commit: {commit_sha}
-- Last Updated: {timestamp}
-- Changes: {summary_of_changes}
+# Create publish-history.md if missing
+if [ ! -f "$MCP_DIR/.thesun/publish-history.md" ]; then
+  cat > "$MCP_DIR/.thesun/publish-history.md" << 'PUBHIST'
+# MCP Publish History
 
-## Changelog Updates
-- {timestamp}: {change_description}
-- {timestamp}: {change_description}
+⚠️ INTERNAL TRACKING ONLY - Must be in .gitignore
+
+## Deployment Status
+| Platform | Status | URL | Last Updated |
+|----------|--------|-----|--------------|
+| Local | ✅ | - | [timestamp] |
+| Confluence | ⬜ | [url] | - |
+| GitHub | ⬜ | [url] | - |
+
+## Update Log
+| Date | Version | Changes | Deployed To |
+|------|---------|---------|-------------|
+
+PUBHIST
+fi
 ```
 
-**IMPORTANT**:
-- The `.thesun/` directory must be in `.gitignore`
-- This is for internal tracking only, NOT for public repositories
-- Always update this file after any publish operation
-- This allows thesun to know where to update documentation next time
+### Step 2: Update After EVERY Deployment
+
+When deploying to Confluence:
+```bash
+# Append to publish-history.md
+echo "| $(date -Iseconds) | X.Y.Z | [changes] | Confluence |" >> "$MCP_DIR/.thesun/publish-history.md"
+```
+
+When deploying to GitHub:
+```bash
+# Append to publish-history.md
+echo "| $(date -Iseconds) | X.Y.Z | [changes] | GitHub |" >> "$MCP_DIR/.thesun/publish-history.md"
+```
+
+### Step 3: Verify Before Completing
+
+```bash
+# VERIFICATION CHECKLIST
+grep "\.thesun" "$MCP_DIR/.gitignore" && echo "✓ .thesun is gitignored"
+test -f "$MCP_DIR/.thesun/publish-history.md" && echo "✓ Publish history exists"
+```
+
+**WHY THIS MATTERS:**
+- Prevents duplicate documentation across platforms
+- Allows thesun to know where to update docs next time
+- Creates audit trail of all deployments
+- Never commits internal tracking to public repos
 
 ## Non-Local MCP Handling
 

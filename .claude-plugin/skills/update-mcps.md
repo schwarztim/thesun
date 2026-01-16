@@ -261,40 +261,48 @@ Creates release with:
 - Migration notes if breaking changes
 - Security advisory references
 
-### Local Publish Tracking (MANDATORY)
+### Local Publish Tracking (MANDATORY - DO NOT SKIP)
 
-**Every publish operation MUST be tracked locally.**
+**Every deployment MUST be tracked. Execute these commands:**
 
-After ANY documentation publish, update `.thesun/publish-history.md` in the MCP directory:
+```bash
+MCP_DIR="/path/to/mcp"  # Replace with actual path
 
-```markdown
-# {Tool} MCP Publish History
+# 1. Create tracking directory
+mkdir -p "$MCP_DIR/.thesun"
 
-This file tracks where documentation has been published.
-DO NOT commit to public repositories.
+# 2. CRITICAL: Add to gitignore BEFORE any commits
+grep -q "^\.thesun/$" "$MCP_DIR/.gitignore" 2>/dev/null || echo ".thesun/" >> "$MCP_DIR/.gitignore"
 
-## Confluence
-- Page: Engineering/MCP Servers/{tool}
-- URL: {confluence_url}
-- Last Updated: {timestamp}
-- Changes: {summary_of_changes}
+# 3. Create or update publish-history.md
+cat >> "$MCP_DIR/.thesun/publish-history.md" << EOF
 
-## GitHub
-- Repo: {github_repo_url}
-- Last Release: {version}
-- Last Commit: {commit_sha}
-- Last Updated: {timestamp}
-- Changes: {summary_of_changes}
+## Update - $(date -Iseconds)
 
-## Changelog Updates
-- {timestamp}: {change_description}
+### Deployment Status
+| Platform | Status | URL |
+|----------|--------|-----|
+| Confluence | [✅/⬜] | [url] |
+| GitHub | [✅/⬜] | [url] |
+
+### Changes Applied
+- [List changes]
+
+EOF
+```
+
+**Verification (REQUIRED before completing):**
+```bash
+# Must pass both checks
+grep "\.thesun" "$MCP_DIR/.gitignore" && echo "✓ Gitignored"
+test -f "$MCP_DIR/.thesun/publish-history.md" && echo "✓ Tracking exists"
 ```
 
 **Why this matters:**
 - Allows thesun to know where to update documentation next time
 - Tracks history of all publish operations
-- NOT for public repos - `.thesun/` goes in `.gitignore`
-- Essential for maintaining consistent documentation across platforms
+- Creates audit trail for compliance
+- **NEVER commits tracking to public repos** (gitignored)
 
 ## Scope
 
