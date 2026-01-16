@@ -547,7 +547,106 @@ Add to .gitignore:
 echo ".thesun/" >> "${outputDir}/.gitignore"
 \`\`\`
 
-### 5.8 Final Report
+### 5.8 Auto-Generate Claude Skill (MANDATORY)
+
+**Every MCP needs a skill so Claude knows how to use it effectively.**
+
+Create \`${outputDir}/.claude-skill.md\` with authentication-aware wrapper:
+
+\`\`\`markdown
+---
+name: ${input.target}
+description: Use ${input.target} MCP for [primary use case]
+tags: [security, api, ${input.target}]
+---
+
+# ${input.target} Skill
+
+This skill provides convenient access to ${input.target} MCP tools.
+
+## When to Use
+
+Use this skill when:
+- [Primary use case 1]
+- [Primary use case 2]
+- [Primary use case 3]
+
+## Authentication Check
+
+Before using any ${input.target} tools, verify authentication:
+
+\`\`\`typescript
+// Check if MCP is authenticated by testing a simple tool
+const authCheck = await mcp.callTool('${input.target}', 'list_*', {});
+
+if (authCheck.isError) {
+  return {
+    error: 'Authentication required',
+    message: 'Configure credentials in ~/.claude/user-mcps.json',
+    setup: [
+      'Step 1: [How to get credentials]',
+      'Step 2: Add to env config',
+      'Step 3: Restart Claude',
+    ],
+  };
+}
+\`\`\`
+
+## Available Tools
+
+[List main tools with brief descriptions]
+
+## Examples
+
+### Example 1: [Common use case]
+\`\`\`
+[Tool name]:
+  param1: value1
+  param2: value2
+\`\`\`
+
+### Example 2: [Another common use case]
+\`\`\`
+[Tool name]:
+  param1: value1
+\`\`\`
+
+## Best Practices
+
+- [Practice 1]
+- [Practice 2]
+- [Practice 3]
+
+## Troubleshooting
+
+**Authentication Errors**
+- Verify credentials in ~/.claude/user-mcps.json
+- Check API token is valid
+- Restart Claude after config changes
+
+**API Errors**
+- Check rate limits
+- Verify API endpoint is accessible
+- Check input parameter formats
+\`\`\`
+
+**Install the skill:**
+\`\`\`bash
+# Create skills directory if needed
+mkdir -p ~/.claude/skills
+
+# Copy skill to global skills directory
+cp "${outputDir}/.claude-skill.md" ~/.claude/skills/${input.target}.md
+
+echo "✓ Skill installed at ~/.claude/skills/${input.target}.md"
+\`\`\`
+
+**Update publish-history.md:**
+\`\`\`bash
+echo "| \$(date -Iseconds) | 1.0.0 | Skill generated | Local |" >> "${outputDir}/.thesun/publish-history.md"
+\`\`\`
+
+### 5.9 Final Report
 
 After all improvements, provide a summary:
 \`\`\`
@@ -889,7 +988,30 @@ Append to \`${fixPath}/.thesun/publish-history.md\`:
 - GitHub: [✅/❌]
 \`\`\`
 
-### 5.7 Final Report
+### 5.7 Update/Generate Claude Skill
+
+**Check if skill exists, update or create it:**
+
+\`\`\`bash
+if [ -f "${fixPath}/.claude-skill.md" ]; then
+  echo "Skill exists - updating with fixes"
+  # Append fix notes to troubleshooting section
+else
+  echo "No skill found - generating new skill"
+  # Create skill following same template as CREATE mode
+fi
+\`\`\`
+
+For new skills, follow same format as section 5.8 in CREATE mode.
+
+For existing skills, add to troubleshooting section:
+\`\`\`markdown
+## Recent Fixes (${new Date().toISOString().split('T')[0]})
+
+- [List fixes applied]
+\`\`\`
+
+### 5.8 Final Report
 
 \`\`\`
 ## ${target} MCP - Fix Complete
