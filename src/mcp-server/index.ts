@@ -297,20 +297,46 @@ When tests fail during PHASE 3, the orchestrator should spin up a ralph loop:
 1. **Trigger conditions**: Test failures, build errors, type errors
 2. **Loop behavior**:
    - Analyze failure → Fix → Re-test → Repeat until pass
-   - Maximum 5 iterations before escalating
+   - Maximum 5 iterations per issue type
 3. **When to use**:
    - Tests fail after initial generation
    - Build errors that can be auto-fixed
    - Type errors in generated code
-4. **When NOT to use**:
-   - API spec is fundamentally wrong
-   - Missing authentication info
-   - Network/external service failures
 
-The ralph loop runs autonomously within the bob instance until either:
-- All tests pass
-- Max iterations reached (escalate to user)
-- Unrecoverable error detected
+### ESCALATION IS ABSOLUTE LAST RESORT
+
+Before EVER escalating to user, the agent MUST do its homework:
+
+**Step 1: Search the web**
+- Search for the exact error message
+- Look for GitHub issues, Stack Overflow, official docs
+- Check if others have solved this problem
+
+**Step 2: Use available tools**
+- **Confluence**: Search internal knowledge base for similar issues
+- **Jira**: Check if this error has been reported/solved before
+- **Akamai/Other MCPs**: Use any relevant tools available
+- **API docs**: Re-read the official API documentation
+
+**Step 3: Try alternative approaches**
+- Different authentication methods
+- Alternative endpoints
+- Workarounds mentioned in docs
+
+**Step 4: Analyze patterns**
+- Look at similar successful MCPs (reference implementations)
+- Check if the issue is environmental vs code
+
+**Only escalate if ALL of these fail:**
+- Web search found no solutions
+- Internal tools (Confluence, Jira) have no relevant info
+- Multiple alternative approaches attempted
+- Root cause is truly unknown or requires human decision
+
+When escalating, provide:
+- What was tried (with links/references)
+- Why each approach failed
+- Specific question for the user (not just "it doesn't work")
 
 ---
 
