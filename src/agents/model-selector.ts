@@ -165,11 +165,13 @@ export function selectModelForPhase(phase: BuildPhase, iterationCount = 0): Clau
   });
 }
 
-`★ Insight ─────────────────────────────────────`
-// Model Selection Strategy:
-// 1. Opus ($15/MTok): Planning, architecture, security - decisions that matter
-// 2. Sonnet ($3/MTok): Implementation, iteration - bulk of the work
-// 3. Haiku ($1/MTok): Validation, lookups - quick checks
-// This optimizes for both cost (80% savings on iterations) and quality
-// (full Opus power for critical decisions)
-`─────────────────────────────────────────────────`
+/*
+ * ★ Insight ─────────────────────────────────────
+ * Model Selection Strategy:
+ * 1. Opus ($15/MTok): Planning, architecture, security - decisions that matter
+ * 2. Sonnet ($3/MTok): Implementation, iteration - bulk of the work
+ * 3. Haiku ($1/MTok): Validation, lookups - quick checks
+ * This optimizes for both cost (80% savings on iterations) and quality
+ * (full Opus power for critical decisions)
+ * ─────────────────────────────────────────────────
+ */

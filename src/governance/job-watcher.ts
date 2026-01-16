@@ -412,7 +412,12 @@ export class JobWatcher extends EventEmitter {
   }
 
   private isLoopBack(from: BuildPhase, to: BuildPhase): boolean {
-    const phaseOrder = [
+    // Failed is a terminal state, not part of normal progression
+    if (from === BuildPhase.FAILED || to === BuildPhase.FAILED) {
+      return false;
+    }
+
+    const phaseOrder: BuildPhase[] = [
       BuildPhase.PENDING,
       BuildPhase.DISCOVERING,
       BuildPhase.GENERATING,
