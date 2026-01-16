@@ -290,6 +290,30 @@ When spawning sub-agents:
 
 ---
 
+## RALPH LOOPS (Iterative Testing)
+
+When tests fail during PHASE 3, the orchestrator should spin up a ralph loop:
+
+1. **Trigger conditions**: Test failures, build errors, type errors
+2. **Loop behavior**:
+   - Analyze failure → Fix → Re-test → Repeat until pass
+   - Maximum 5 iterations before escalating
+3. **When to use**:
+   - Tests fail after initial generation
+   - Build errors that can be auto-fixed
+   - Type errors in generated code
+4. **When NOT to use**:
+   - API spec is fundamentally wrong
+   - Missing authentication info
+   - Network/external service failures
+
+The ralph loop runs autonomously within the bob instance until either:
+- All tests pass
+- Max iterations reached (escalate to user)
+- Unrecoverable error detected
+
+---
+
 **BEGIN EXECUTION NOW. Start with Phase 1: Research.**
 `;
 
