@@ -1,0 +1,53 @@
+{
+  "name": "thesun",
+  "version": "0.1.0",
+  "description": "Autonomous MCP server generation and orchestration platform. Generates, tests, and operates MCP servers with near-zero human involvement.",
+  "author": "Tim Schwarz",
+  "homepage": "https://github.com/schwarztim/thesun",
+  "skills": [
+    {
+      "name": "generate-mcp",
+      "description": "Generate a production-ready MCP server for any tool/API. Use when the user wants to create an MCP server, integrate with a new API, or automate tool creation.",
+      "path": "skills/generate-mcp.md"
+    },
+    {
+      "name": "build-status",
+      "description": "Check status of active MCP builds and view system health dashboard.",
+      "path": "skills/build-status.md"
+    },
+    {
+      "name": "research-api",
+      "description": "Research and discover all APIs for a tool without generating code. Use for exploration and planning.",
+      "path": "skills/research-api.md"
+    }
+  ],
+  "commands": [
+    {
+      "name": "mcp",
+      "description": "Generate MCP servers autonomously",
+      "path": "commands/mcp.md"
+    },
+    {
+      "name": "sun-status",
+      "description": "View thesun build status and system health",
+      "path": "commands/status.md"
+    }
+  ],
+  "agents": [
+    {
+      "name": "meta-planner",
+      "description": "High-level strategic planner (Opus) that adapts workflows dynamically. Analyzes requests, anticipates problems, and designs custom approaches when standard workflow doesn't fit. Should be invoked FIRST for any complex request.",
+      "path": "agents/meta-planner.md"
+    },
+    {
+      "name": "mcp-builder",
+      "description": "Autonomous agent that generates complete MCP servers from tool specifications. Runs discovery, generation, testing, security scanning, and optimization with minimal human intervention.",
+      "path": "agents/mcp-builder.md"
+    },
+    {
+      "name": "api-researcher",
+      "description": "Researches and catalogs all APIs for a tool. Finds existing MCPs, vendor docs, OpenAPI specs, and identifies gaps.",
+      "path": "agents/api-researcher.md"
+    }
+  ]
+}
