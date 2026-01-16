@@ -2,8 +2,8 @@
 /**
  * thesun MCP Server
  *
- * Exposes thesun's autonomous MCP generation capabilities as MCP tools.
- * This allows Claude to generate MCPs from any project directory.
+ * Single autonomous tool for MCP generation. Just say "use thesun for <target>"
+ * and it handles everything: research, generation, testing, registration.
  */
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
@@ -15,88 +15,54 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 
-// Tool definitions
+// Single unified tool
 const TOOLS: Tool[] = [
   {
-    name: 'generate_mcp',
-    description: `Generate a production-ready MCP server for any API/tool autonomously.
+    name: 'thesun',
+    description: `Autonomous MCP server generator. Creates production-ready MCP servers for any API.
 
-This tool will:
-1. Research the API (web search, docs, OpenAPI specs)
-2. Check for existing MCP implementations
-3. Generate complete TypeScript MCP server code
-4. Generate tests
-5. Run security scans
-6. **AUTO-REGISTER globally** in ~/.claude/mcp.json
+Just say: "use thesun for Tesla" or "use thesun for Stripe"
 
-The generated MCP will be placed in the specified output directory (defaults to ./<tool>-mcp/).
-After generation, the MCP is automatically registered for global availability.
+thesun handles EVERYTHING autonomously:
+- Researches the API (web search, docs, OpenAPI specs)
+- Checks for existing MCP implementations (uses them if good enough)
+- Generates complete TypeScript MCP server if needed
+- Writes comprehensive tests
+- Runs security scans
+- Registers globally in ~/.claude/mcp.json
 
-Example usage:
-- generate_mcp({ tool: "tesla" }) - Creates Tesla Fleet API MCP
-- generate_mcp({ tool: "stripe", output: "./payments-mcp" }) - Creates Stripe MCP in custom dir
-- generate_mcp({ tool: "slack", spec: "https://api.slack.com/specs/..." }) - Uses provided OpenAPI spec`,
+Output: A complete, tested, globally-registered MCP server ready to use.
+
+Examples:
+- thesun({ target: "tesla" }) - Creates Tesla Fleet API MCP
+- thesun({ target: "stripe" }) - Creates Stripe payments MCP
+- thesun({ target: "slack", output: "./slack-mcp" }) - Custom output directory
+- thesun({ target: "custom-api", spec: "https://api.example.com/openapi.json" }) - With OpenAPI spec`,
     inputSchema: {
       type: 'object',
       properties: {
-        tool: {
+        target: {
           type: 'string',
-          description: 'Name of the tool/API to generate MCP for (e.g., tesla, stripe, slack)',
+          description: 'The API/service to create an MCP for (e.g., tesla, stripe, slack, jira)',
         },
         output: {
           type: 'string',
-          description: 'Output directory for generated MCP server (default: ./<tool>-mcp/)',
+          description: 'Output directory (default: ./<target>-mcp/)',
         },
         spec: {
           type: 'string',
-          description: 'Optional URL or path to OpenAPI/Swagger specification',
+          description: 'Optional OpenAPI/Swagger spec URL or path',
         },
       },
-      required: ['tool'],
-    },
-  },
-  {
-    name: 'research_api',
-    description: `Research and discover all APIs for a tool without generating code.
-
-Returns:
-- Existing MCP implementations (if any)
-- Official API documentation links
-- OpenAPI/Swagger specs (if available)
-- Authentication requirements
-- Key endpoints and capabilities
-
-Use this for exploration before deciding whether to generate a new MCP or use an existing one.`,
-    inputSchema: {
-      type: 'object',
-      properties: {
-        tool: {
-          type: 'string',
-          description: 'Name of the tool/API to research (e.g., tesla, github, jira)',
-        },
-      },
-      required: ['tool'],
-    },
-  },
-  {
-    name: 'check_build_status',
-    description: 'Check the status of active MCP builds and view system health.',
-    inputSchema: {
-      type: 'object',
-      properties: {},
+      required: ['target'],
     },
   },
 ];
 
-// Input schemas for validation
-const GenerateMcpInput = z.object({
-  tool: z.string().min(1),
+const TheSunInput = z.object({
+  target: z.string().min(1),
   output: z.string().optional(),
   spec: z.string().optional(),
-});
-
-const ResearchApiInput = z.object({
-  tool: z.string().min(1),
 });
 
 class TheSunMcpServer {
@@ -119,26 +85,18 @@ class TheSunMcpServer {
   }
 
   private setupHandlers(): void {
-    // List available tools
     this.server.setRequestHandler(ListToolsRequestSchema, async () => ({
       tools: TOOLS,
     }));
 
-    // Handle tool calls
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const { name, arguments: args } = request.params;
 
       try {
-        switch (name) {
-          case 'generate_mcp':
-            return await this.handleGenerateMcp(args);
-          case 'research_api':
-            return await this.handleResearchApi(args);
-          case 'check_build_status':
-            return await this.handleCheckBuildStatus();
-          default:
-            throw new Error(`Unknown tool: ${name}`);
+        if (name === 'thesun') {
+          return await this.handleTheSun(args);
         }
+        throw new Error(`Unknown tool: ${name}`);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         return {
@@ -149,165 +107,122 @@ class TheSunMcpServer {
     });
   }
 
-  private async handleGenerateMcp(args: unknown): Promise<{ content: Array<{ type: string; text: string }> }> {
-    const input = GenerateMcpInput.parse(args);
-    const outputDir = input.output || `./${input.tool}-mcp`;
-
-    // This returns instructions for Claude to execute the generation
-    // The actual work is done by Claude following these instructions
-    const instructions = `
-## MCP Generation Request: ${input.tool}
-
-**Output Directory:** ${outputDir}
-${input.spec ? `**OpenAPI Spec:** ${input.spec}` : ''}
-
-### Execution Steps
-
-You are now acting as thesun's mcp-builder agent. Execute these steps:
-
-1. **Research Phase**
-   - Search for existing MCP implementations for "${input.tool}"
-   - Find official API documentation
-   - Locate OpenAPI/Swagger specifications
-   - Identify authentication requirements
-
-2. **Discovery Phase**
-   - Map ALL available API endpoints
-   - Document rate limits and quotas
-   - Note any webhook/event capabilities
-   - Identify required scopes/permissions
-
-3. **Generation Phase**
-   - Create TypeScript MCP server structure in ${outputDir}
-   - Generate tools for each API endpoint
-   - Implement authentication handlers
-   - Create comprehensive error handling
-
-4. **Testing Phase**
-   - Generate unit tests for all tools
-   - Create integration test stubs
-   - Add mock server for offline testing
-
-5. **Security Phase**
-   - Run static analysis
-   - Check for hardcoded secrets
-   - Validate input sanitization
-   - Generate .env.example with required config
-
-6. **Documentation Phase**
-   - Create README.md with setup instructions
-   - Document all available tools
-   - Add usage examples
-
-7. **Global Registration Phase** (CRITICAL - DO NOT SKIP)
-   After successful build, register the MCP globally so it's available in all Claude sessions:
-
-   a. Read the current ~/.claude/mcp.json file
-   b. Add an entry for this MCP:
-      \`\`\`json
-      "${input.tool}": {
-        "command": "node",
-        "args": ["<absolute-path-to-output-dir>/dist/index.js"]
-      }
-      \`\`\`
-   c. If the MCP requires environment variables, include them:
-      \`\`\`json
-      "${input.tool}": {
-        "command": "node",
-        "args": ["<absolute-path-to-output-dir>/dist/index.js"],
-        "env": {
-          "API_KEY": "<prompt-user-for-value>"
-        }
-      }
-      \`\`\`
-   d. Write the updated config back to ~/.claude/mcp.json
-   e. Inform the user: "MCP registered globally. Restart Claude to use it."
-
-**IMPORTANT:**
-- All config must use environment variables (no hardcoded values)
-- Follow the patterns from the Akamai MCP reference implementation
-- Ensure cross-platform compatibility (Windows, macOS, Linux)
-- **ALWAYS register the MCP globally in ~/.claude/mcp.json after successful build**
-- Use ABSOLUTE paths in the mcp.json registration (resolve relative paths)
-
-Begin execution now. Start with Step 1: Research Phase.
-`;
-
-    return {
-      content: [{ type: 'text', text: instructions }],
-    };
-  }
-
-  private async handleResearchApi(args: unknown): Promise<{ content: Array<{ type: string; text: string }> }> {
-    const input = ResearchApiInput.parse(args);
+  private async handleTheSun(args: unknown): Promise<{ content: Array<{ type: string; text: string }> }> {
+    const input = TheSunInput.parse(args);
+    const outputDir = input.output || `./${input.target}-mcp`;
 
     const instructions = `
-## API Research Request: ${input.tool}
+# thesun: Autonomous MCP Generation for "${input.target}"
 
-### Research Tasks
+You are now operating as **thesun**, an autonomous MCP generation system.
+Execute the complete pipeline below WITHOUT stopping for human input.
 
-Search for and compile information about "${input.tool}" API:
+**Target:** ${input.target}
+**Output:** ${outputDir}
+${input.spec ? `**Spec:** ${input.spec}` : ''}
 
-1. **Existing MCP Implementations**
-   - Search GitHub for "${input.tool} MCP server"
-   - Check MCP registries (mcp.so, pulsemcp.com, etc.)
-   - Evaluate completeness and quality of existing implementations
+---
 
-2. **Official Documentation**
-   - Find official API documentation
-   - Locate developer portal/dashboard
-   - Identify API versioning strategy
+## PHASE 1: RESEARCH (Do this first, completely)
 
-3. **OpenAPI Specifications**
-   - Search for official OpenAPI/Swagger specs
-   - Check if specs are publicly available
-   - Note any authentication required to access specs
+### 1.1 Check for Existing MCPs
+Search for existing MCP implementations:
+- GitHub: "${input.target} MCP server"
+- MCP registries: mcp.so, pulsemcp.com, mcpmarket.com
+- npm: @*/*${input.target}*mcp*
 
-4. **Authentication Requirements**
-   - OAuth 2.0 / OIDC flows
-   - API keys / tokens
-   - Required scopes and permissions
+**Decision Point:** If a high-quality existing MCP exists with good coverage:
+- Recommend using it instead
+- Provide installation instructions
+- STOP here (no need to regenerate)
 
-5. **Key Capabilities**
-   - List main API endpoint categories
-   - Note webhook/event support
-   - Identify rate limits and quotas
+If no good existing MCP, continue to 1.2.
 
-**Return a summary** with:
-- Recommendation: Use existing MCP vs Generate new
-- Links to key resources
-- Authentication complexity assessment
-- Estimated endpoint coverage available
+### 1.2 Gather API Information
+- Find official API documentation
+- Locate OpenAPI/Swagger specifications
+- Identify authentication method (OAuth, API key, etc.)
+- Map main endpoint categories
+- Note rate limits and quotas
 
-Begin research now.
-`;
+---
 
-    return {
-      content: [{ type: 'text', text: instructions }],
-    };
-  }
+## PHASE 2: GENERATION (Only if no existing MCP)
 
-  private async handleCheckBuildStatus(): Promise<{ content: Array<{ type: string; text: string }> }> {
-    // In a full implementation, this would query the orchestrator
-    return {
-      content: [{
-        type: 'text',
-        text: `
-## thesun Build Status
-
-**Orchestrator:** Not running (standalone mode)
-
-To start the orchestrator for parallel builds:
-\`\`\`bash
-cd ~/Scripts/thesun
-npm run orchestrator:start
+### 2.1 Create Project Structure
+\`\`\`
+${outputDir}/
+├── src/
+│   └── index.ts          # MCP server entry point
+├── package.json
+├── tsconfig.json
+├── .env.example          # Required environment variables
+└── README.md
 \`\`\`
 
-**Current Mode:** Direct execution via MCP tools
+### 2.2 Generate MCP Server
+- Create tools for each API endpoint category
+- Implement authentication handler
+- Add comprehensive error handling
+- Use environment variables for ALL config (no hardcoded values)
+- Follow patterns from reference implementations
 
-Use \`generate_mcp\` tool to start a new build.
-`,
-      }],
+### 2.3 Generate Tests
+- Unit tests for each tool
+- Integration test stubs
+- Mock server for offline testing
+
+---
+
+## PHASE 3: VALIDATION
+
+### 3.1 Security Checks
+- No hardcoded secrets
+- Input sanitization on all parameters
+- Proper error messages (no sensitive data leakage)
+
+### 3.2 Build Verification
+- Run \`npm install\`
+- Run \`npm run build\`
+- Fix any errors
+
+---
+
+## PHASE 4: GLOBAL REGISTRATION (CRITICAL - DO NOT SKIP)
+
+After successful build, register the MCP globally:
+
+1. Read ~/.claude/mcp.json
+2. Add entry:
+\`\`\`json
+"${input.target}": {
+  "command": "node",
+  "args": ["<ABSOLUTE-PATH-TO>${outputDir}/dist/index.js"],
+  "env": {
+    // Add required env vars here
+  }
+}
+\`\`\`
+3. Write back to ~/.claude/mcp.json
+4. Tell user: "MCP registered. Restart Claude to use ${input.target} tools."
+
+---
+
+## EXECUTION RULES
+
+1. **Be autonomous** - Don't ask for permission at each step
+2. **Be thorough** - Research completely before generating
+3. **Be practical** - If good MCP exists, recommend it
+4. **Always register** - Every generated MCP must be globally registered
+5. **Use absolute paths** - Resolve all paths before writing to mcp.json
+
+---
+
+**BEGIN EXECUTION NOW. Start with Phase 1: Research.**
+`;
+
+    return {
+      content: [{ type: 'text', text: instructions }],
     };
   }
 
@@ -318,6 +233,5 @@ Use \`generate_mcp\` tool to start a new build.
   }
 }
 
-// Start server
 const server = new TheSunMcpServer();
 server.run().catch(console.error);
