@@ -278,6 +278,48 @@ npx ${input.target}-mcp
 - Use environment variables for ALL config (no hardcoded values)
 - Follow patterns from reference implementations
 
+**CRITICAL: GRACEFUL STARTUP WITHOUT CREDENTIALS**
+The MCP server MUST start successfully even when credentials are NOT configured.
+This ensures the MCP appears in Claude's \`/mcp\` list immediately after installation.
+
+Pattern to follow:
+\`\`\`typescript
+// At startup - DON'T crash if env vars missing
+const API_URL = process.env.${input.target.toUpperCase()}_API_URL || "";
+const API_KEY = process.env.${input.target.toUpperCase()}_API_KEY || "";
+
+// In ListToolsHandler - ALWAYS return tools
+server.setRequestHandler(ListToolsRequestSchema, async () => {
+  // Return all tools even without credentials
+  return { tools: allTools };
+});
+
+// In CallToolHandler - Check credentials when tool is CALLED
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  // Only check credentials when a tool is actually invoked
+  if (!API_URL || !API_KEY) {
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify({
+          error: "Authentication required",
+          message: "Configure credentials in ~/.claude/.claude.json",
+          required: ["${input.target.toUpperCase()}_API_URL", "${input.target.toUpperCase()}_API_KEY"]
+        }, null, 2)
+      }],
+      isError: true
+    };
+  }
+  // ... actual tool logic
+});
+\`\`\`
+
+**WHY THIS MATTERS:**
+- Claude only shows MCPs that START successfully
+- If MCP crashes on startup (missing env vars), it won't appear in /mcp
+- User won't know the MCP exists until they manually configure credentials
+- With graceful startup, user sees all available tools and gets clear error when they need to configure auth
+
 ### 2.3 Generate Tests
 - Unit tests for each tool
 - Integration test stubs

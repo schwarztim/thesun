@@ -189,6 +189,7 @@ export interface McpValidationResult {
     testsPasses: boolean;
     hasGitRepo: boolean;
     hasGitRemote: boolean;
+    startsWithoutCredentials: boolean; // CRITICAL: MCP must start even without env vars
   };
   score: number; // 0-100
   missingItems: string[];
@@ -211,6 +212,7 @@ export async function validateExistingMcp(mcpPath: string): Promise<McpValidatio
     testsPasses: false,
     hasGitRepo: false,
     hasGitRemote: false,
+    startsWithoutCredentials: false, // CRITICAL for global availability
   };
   const missingItems: string[] = [];
   const recommendations: string[] = [];
@@ -276,7 +278,7 @@ export async function validateExistingMcp(mcpPath: string): Promise<McpValidatio
     }
   }
 
-  // Run build, test, and git remote checks IN PARALLEL
+  // Run build, test, git remote, and graceful startup checks IN PARALLEL
   const parallelChecks = await Promise.all([
     // Build check
     checks.hasPackageJson
@@ -301,6 +303,43 @@ export async function validateExistingMcp(mcpPath: string): Promise<McpValidatio
           resolve({ type: 'gitRemote', success: result.success && !!result.output?.trim() });
         })
       : Promise.resolve({ type: 'gitRemote' as const, success: false }),
+
+    // CRITICAL: Check MCP starts WITHOUT credentials (for global availability)
+    checks.hasPackageJson && checks.buildPasses !== false
+      ? new Promise<{ type: 'startsWithoutCreds'; success: boolean }>((resolve) => {
+          // Try to start the MCP with empty env vars - it should NOT crash
+          const distIndex = join(mcpPath, 'dist', 'index.js');
+          if (!existsSync(distIndex)) {
+            resolve({ type: 'startsWithoutCreds', success: false });
+            return;
+          }
+          // Start MCP with minimal/empty env, send initialize, check it responds
+          const result = safeExec('node', ['-e', `
+            const { spawn } = require('child_process');
+            const proc = spawn('node', ['${distIndex}'], {
+              env: { PATH: process.env.PATH, HOME: process.env.HOME },
+              stdio: ['pipe', 'pipe', 'pipe']
+            });
+            let output = '';
+            proc.stdout.on('data', d => output += d);
+            proc.stderr.on('data', d => output += d);
+            // Send MCP initialize request
+            proc.stdin.write(JSON.stringify({
+              jsonrpc: '2.0',
+              id: 1,
+              method: 'initialize',
+              params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'test', version: '1.0' } }
+            }) + '\\n');
+            setTimeout(() => {
+              proc.kill();
+              // Check if we got a valid response (not a crash)
+              const success = output.includes('"result"') || output.includes('"serverInfo"');
+              process.exit(success ? 0 : 1);
+            }, 3000);
+          `], { timeout: 5000 });
+          resolve({ type: 'startsWithoutCreds', success: result.success });
+        })
+      : Promise.resolve({ type: 'startsWithoutCreds' as const, success: false }),
   ]);
 
   // Apply parallel check results
@@ -308,6 +347,7 @@ export async function validateExistingMcp(mcpPath: string): Promise<McpValidatio
     if (check.type === 'build') checks.buildPasses = check.success;
     if (check.type === 'test') checks.testsPasses = check.success;
     if (check.type === 'gitRemote') checks.hasGitRemote = check.success;
+    if (check.type === 'startsWithoutCreds') checks.startsWithoutCredentials = check.success;
   }
 
   // Build missing items and recommendations
@@ -350,6 +390,10 @@ export async function validateExistingMcp(mcpPath: string): Promise<McpValidatio
   if (checks.hasPackageJson && checks.hasTests && !checks.testsPasses) {
     missingItems.push('Passing tests');
     recommendations.push('Fix test failures: npm test');
+  }
+  if (!checks.startsWithoutCredentials) {
+    missingItems.push('Graceful startup without credentials (CRITICAL)');
+    recommendations.push('CRITICAL: MCP must start without env vars configured. Check credentials at tool call time, not startup.');
   }
 
   // Calculate score
@@ -506,6 +550,9 @@ export function generateImprovementPlan(validation: McpValidationResult): string
   }
   if (!validation.checks.hasGitRemote) {
     plan.push('Create GitHub repository and push code');
+  }
+  if (!validation.checks.startsWithoutCredentials) {
+    plan.push('CRITICAL: Fix MCP to start gracefully without credentials - check auth at tool call time, not startup');
   }
 
   return plan;
