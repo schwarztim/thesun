@@ -698,3 +698,45 @@ export const VersionCheckResultSchema = z.object({
 });
 
 export type VersionCheckResult = z.infer<typeof VersionCheckResultSchema>;
+
+// ============================================================================
+// Validation Gate Types
+// ============================================================================
+
+export const ValidationGatePhaseSchema = z.enum([
+  "build",
+  "endpoints",
+  "auth",
+  "integration",
+]);
+
+export type ValidationGatePhase = z.infer<typeof ValidationGatePhaseSchema>;
+
+export const ValidationDetailSchema = z.object({
+  name: z.string(),
+  passed: z.boolean(),
+  error: z.string().optional(),
+  duration: z.number().optional(),
+});
+
+export type ValidationDetail = z.infer<typeof ValidationDetailSchema>;
+
+export const ValidationPhaseResultSchema = z.object({
+  phase: ValidationGatePhaseSchema,
+  passed: z.boolean(),
+  details: z.array(ValidationDetailSchema),
+  timestamp: z.coerce.date(),
+});
+
+export type ValidationPhaseResult = z.infer<typeof ValidationPhaseResultSchema>;
+
+export const ValidationGateResultSchema = z.object({
+  target: z.string(),
+  allPassed: z.boolean(),
+  phases: z.array(ValidationPhaseResultSchema),
+  iterations: z.number(),
+  totalDuration: z.number(),
+  failedPhase: ValidationGatePhaseSchema.optional(),
+});
+
+export type ValidationGateResult = z.infer<typeof ValidationGateResultSchema>;
