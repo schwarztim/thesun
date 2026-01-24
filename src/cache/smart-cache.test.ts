@@ -164,6 +164,21 @@ describe("SmartCache", () => {
       expect(toRegenerate).not.toContain("/users"); // unchanged
       expect(toRegenerate).not.toContain("/deprecated"); // removed (no need to regenerate)
     });
+
+    it("should return all cached endpoints when newSpec not provided", async () => {
+      await cache.cacheSpec("stripe", oldSpec, "https://api.stripe.com/spec");
+
+      const toRegenerate = await cache.getEndpointsToRegenerate("stripe");
+      expect(toRegenerate).toContain("/users");
+      expect(toRegenerate).toContain("/users/{id}");
+      expect(toRegenerate).toContain("/deprecated");
+      expect(toRegenerate).toHaveLength(3);
+    });
+
+    it("should return empty array when no cached spec and no newSpec", async () => {
+      const toRegenerate = await cache.getEndpointsToRegenerate("nonexistent");
+      expect(toRegenerate).toEqual([]);
+    });
   });
 
   describe("HAR storage", () => {
@@ -249,8 +264,9 @@ describe("SmartCache", () => {
     it("should prune old entries", async () => {
       await cache.cacheSpec("stripe", testSpec, "https://api.stripe.com/spec");
 
-      // Prune entries older than 0 days (everything)
-      const pruned = await cache.pruneOldEntries(0);
+      // Prune entries older than -1 days (cutoff is tomorrow, so everything is older)
+      // Using -1 because 0 creates race condition where entry and cutoff have same timestamp
+      const pruned = await cache.pruneOldEntries(-1);
       expect(pruned).toBe(1);
 
       const cached = await cache.getSpec("stripe");

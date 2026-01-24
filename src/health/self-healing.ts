@@ -199,7 +199,7 @@ export class SelfHealingModule {
   async checkApiVersion(
     target: string,
     expectedVersion: string,
-    versionEndpoint: string,
+    versionEndpoint: string = "/version",
   ): Promise<VersionCheckResult> {
     try {
       const response = await fetch(versionEndpoint);

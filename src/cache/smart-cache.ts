@@ -236,12 +236,13 @@ export class SmartCache {
   /**
    * Get list of endpoints that need to be regenerated
    * @param target - Target API name
-   * @param newSpec - New spec to compare against cached version
+   * @param newSpec - Optional new spec to compare against cached version. If not provided,
+   *                  returns all endpoints from the cached spec (useful when spec already stored).
    * @returns List of endpoint paths that need regeneration
    */
   async getEndpointsToRegenerate(
     target: string,
-    newSpec: OpenAPISpec,
+    newSpec?: OpenAPISpec,
   ): Promise<string[]> {
     const targetDir = this.getTargetDir(target);
     const specPath = path.join(targetDir, "openapi.json");
@@ -249,12 +250,23 @@ export class SmartCache {
     try {
       const oldSpecContent = await fs.readFile(specPath, "utf-8");
       const oldSpec = JSON.parse(oldSpecContent) as OpenAPISpec;
+
+      // If no new spec provided, return all endpoints from cached spec
+      if (!newSpec) {
+        return this.extractEndpoints(oldSpec);
+      }
+
       const diff = await this.diffSpecs(oldSpec, newSpec);
       // Return added + modified (removed endpoints don't need regeneration)
       return [...diff.added, ...diff.modified];
     } catch {
-      // No cached spec, regenerate all
-      return this.extractEndpoints(newSpec);
+      // No cached spec
+      if (newSpec) {
+        // Regenerate all from new spec
+        return this.extractEndpoints(newSpec);
+      }
+      // No cached spec and no new spec provided
+      return [];
     }
   }
 
