@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * thesun MCP Server
+ * thesun MCP Server (Browser-Enhanced)
  *
  * Single autonomous tool for MCP generation. Just say "use thesun for <target>"
  * and it handles everything: research, generation, testing, registration.
@@ -10,26 +10,44 @@
  * - All generated MCPs are registered globally in ~/.claude/user-mcps.json
  * - Supports bob instances for isolated parallel builds
  * - Model selection: Opus for planning/security, Sonnet for implementation
+ *
+ * BROWSER-ENHANCED MODULES:
+ * - DependencyChecker: Preflight checks for Chrome and chrome-devtools-mcp
+ * - McpRegistrySearch: Find existing MCPs before generating
+ * - CredentialWizard: Browser-based auth capture and token refresh
+ * - PatternEngine: Apply known API patterns (Stripe, GitHub, AWS)
+ * - SelfHealingModule: Health monitoring and auto-recovery
+ * - ValidationGate: Post-generation validation with retry
+ * - SmartCache: Incremental updates and spec caching
  */
 
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
   Tool,
-} from '@modelcontextprotocol/sdk/types.js';
-import { z } from 'zod';
-import { homedir } from 'os';
-import { join } from 'path';
+} from "@modelcontextprotocol/sdk/types.js";
+import { z } from "zod";
+import { homedir } from "os";
+import { join } from "path";
+
+// Browser-enhanced module imports
+import { getDependencyChecker } from "../preflight/dependency-checker.js";
+import { getMcpRegistrySearch } from "../discovery/mcp-registry-search.js";
+import { CredentialWizard } from "../auth/credential-wizard.js";
+import { PatternEngine } from "../patterns/pattern-engine.js";
+import { SelfHealingModule } from "../health/self-healing.js";
+import { ValidationGate } from "../validation/validation-gate.js";
+import { SmartCache } from "../cache/smart-cache.js";
 
 // Central MCP output directory - NEVER relative to current working directory
-const MCP_OUTPUT_BASE = join(homedir(), 'Scripts', 'mcp-servers');
+const MCP_OUTPUT_BASE = join(homedir(), "Scripts", "mcp-servers");
 
 // Single unified tool
 const TOOLS: Tool[] = [
   {
-    name: 'thesun',
+    name: "thesun",
     description: `Autonomous MCP server generator AND fixer. Creates or fixes MCP servers for any API.
 
 **TWO MODES:**
@@ -52,35 +70,39 @@ thesun handles EVERYTHING autonomously:
 - thesun({ target: "atlassian", fix: "/Users/tim/Scripts/AtlassianPlugin" }) - Fix existing plugin
 - thesun({ target: "jira", fix: "." }) - Fix MCP in current directory`,
     inputSchema: {
-      type: 'object',
+      type: "object",
       properties: {
         target: {
-          type: 'string',
-          description: 'The API/service name (e.g., tesla, stripe, atlassian, jira). Can also be comma-separated for batch: "tesla, stripe, jira"',
+          type: "string",
+          description:
+            'The API/service name (e.g., tesla, stripe, atlassian, jira). Can also be comma-separated for batch: "tesla, stripe, jira"',
         },
         targets: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Array of API/service names for parallel batch generation (e.g., ["tesla", "stripe", "jira"])',
+          type: "array",
+          items: { type: "string" },
+          description:
+            'Array of API/service names for parallel batch generation (e.g., ["tesla", "stripe", "jira"])',
         },
         fix: {
-          type: 'string',
-          description: 'Path to existing MCP code to fix. If provided, runs in FIX mode instead of CREATE mode.',
+          type: "string",
+          description:
+            "Path to existing MCP code to fix. If provided, runs in FIX mode instead of CREATE mode.",
         },
         output: {
-          type: 'string',
+          type: "string",
           description: `Output directory for CREATE mode. Defaults to ~/Scripts/mcp-servers/<target>-mcp/. Ignored in FIX mode.`,
         },
         spec: {
-          type: 'string',
-          description: 'Optional OpenAPI/Swagger spec URL or path',
+          type: "string",
+          description: "Optional OpenAPI/Swagger spec URL or path",
         },
         parallel: {
-          type: 'boolean',
-          description: 'Run batch generation in parallel (default: true). Each target gets its own isolated bob instance.',
+          type: "boolean",
+          description:
+            "Run batch generation in parallel (default: true). Each target gets its own isolated bob instance.",
         },
       },
-      required: ['target'],
+      required: ["target"],
     },
   },
 ];
@@ -100,14 +122,14 @@ class TheSunMcpServer {
   constructor() {
     this.server = new Server(
       {
-        name: 'thesun',
-        version: '0.1.0',
+        name: "thesun",
+        version: "0.1.0",
       },
       {
         capabilities: {
           tools: {},
         },
-      }
+      },
     );
 
     this.setupHandlers();
@@ -122,47 +144,65 @@ class TheSunMcpServer {
       const { name, arguments: args } = request.params;
 
       try {
-        if (name === 'thesun') {
+        if (name === "thesun") {
           return await this.handleTheSun(args);
         }
         throw new Error(`Unknown tool: ${name}`);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         return {
-          content: [{ type: 'text', text: `Error: ${message}` }],
+          content: [{ type: "text", text: `Error: ${message}` }],
           isError: true,
         };
       }
     });
   }
 
-  private async handleTheSun(args: unknown): Promise<{ content: Array<{ type: string; text: string }> }> {
+  private async handleTheSun(
+    args: unknown,
+  ): Promise<{ content: Array<{ type: string; text: string }> }> {
     const input = TheSunInput.parse(args);
 
     const homeDir = homedir();
     // CRITICAL: Use user-mcps.json - this is auto-loaded by Claude without needing whitelist
     // DO NOT use .claude.json (not read for MCPs) or mcp.json (needs whitelist in settings.json)
-    const mcpConfigPath = join(homeDir, '.claude', 'user-mcps.json');
+    const mcpConfigPath = join(homeDir, ".claude", "user-mcps.json");
 
     // Parse targets: support array, comma-separated string, or single target
     let allTargets: string[] = [];
     if (input.targets && input.targets.length > 0) {
-      allTargets = input.targets.map(t => t.trim()).filter(t => t.length > 0);
-    } else if (input.target.includes(',')) {
-      allTargets = input.target.split(',').map(t => t.trim()).filter(t => t.length > 0);
+      allTargets = input.targets
+        .map((t) => t.trim())
+        .filter((t) => t.length > 0);
+    } else if (input.target.includes(",")) {
+      allTargets = input.target
+        .split(",")
+        .map((t) => t.trim())
+        .filter((t) => t.length > 0);
     } else {
       allTargets = [input.target.trim()];
     }
 
     // FIX MODE: Fix existing MCP code (single target only)
     if (input.fix) {
-      const fixPath = input.fix.startsWith('/') ? input.fix : join(homeDir, 'Scripts', input.fix);
-      return this.handleFixMode(allTargets[0], fixPath, mcpConfigPath, input.spec);
+      const fixPath = input.fix.startsWith("/")
+        ? input.fix
+        : join(homeDir, "Scripts", input.fix);
+      return this.handleFixMode(
+        allTargets[0],
+        fixPath,
+        mcpConfigPath,
+        input.spec,
+      );
     }
 
     // BATCH MODE: Multiple targets - generate parallel orchestration instructions
     if (allTargets.length > 1) {
-      return this.handleBatchMode(allTargets, mcpConfigPath, input.parallel ?? true);
+      return this.handleBatchMode(
+        allTargets,
+        mcpConfigPath,
+        input.parallel ?? true,
+      );
     }
 
     // SINGLE MODE: Generate one MCP
@@ -171,7 +211,7 @@ class TheSunMcpServer {
     let outputDir: string;
     if (input.output) {
       // If user provided path, ensure it's absolute
-      outputDir = input.output.startsWith('/')
+      outputDir = input.output.startsWith("/")
         ? input.output
         : join(MCP_OUTPUT_BASE, input.output);
     } else {
@@ -180,7 +220,7 @@ class TheSunMcpServer {
     }
 
     const instructions = `
-# thesun: Autonomous MCP Generation for "${target}"
+# thesun: Autonomous MCP Generation for "${target}" (Browser-Enhanced)
 
 You are now operating as **thesun**, an autonomous MCP generation system.
 Execute the complete pipeline below WITHOUT stopping for human input.
@@ -188,16 +228,41 @@ Execute the complete pipeline below WITHOUT stopping for human input.
 **Target:** ${input.target}
 **Output:** ${outputDir}
 **MCP Config:** ${mcpConfigPath}
-${input.spec ? `**Spec:** ${input.spec}` : ''}
+${input.spec ? `**Spec:** ${input.spec}` : ""}
 
 > **IMPORTANT**: This tool is directory-independent. The output path is ABSOLUTE.
 > The generated MCP will be available globally in ALL Claude sessions.
 
 ---
 
-## PHASE 1: RESEARCH (Do this first, completely)
+## PHASE 0: PREFLIGHT CHECK
 
-### 1.1 Check for Existing MCPs
+Run DependencyChecker.runPreflight() to verify all dependencies:
+- chrome-devtools-mcp available?
+- Chrome browser available?
+- ~/.thesun/ ready?
+
+**Decision:**
+- Pass -> Continue to Phase 1
+- Fail -> Return error with install instructions
+
+---
+
+## PHASE 1: EXISTING MCP CHECK
+
+### 1.1 Check Cache
+SmartCache.getSpec("${target}")
+- Cached spec available?
+  - Yes + not stale -> Use cached
+  - No or stale -> Continue
+
+### 1.2 Search Registries
+McpRegistrySearch.search("${target}")
+- Score 90+ -> Install existing, done
+- Score 70-89 -> Install + extend
+- Score <70 -> Generate from scratch
+
+### 1.3 Legacy Search (if no registry hits)
 Search for existing MCP implementations:
 - GitHub: "${input.target} MCP server"
 - MCP registries: mcp.so, pulsemcp.com, mcpmarket.com
@@ -208,9 +273,17 @@ Search for existing MCP implementations:
 - Provide installation instructions
 - STOP here (no need to regenerate)
 
-If no good existing MCP, continue to 1.2.
+If no good existing MCP, continue to Phase 2.
 
-### 1.2 Gather API Information
+---
+
+## PHASE 2: DISCOVERY (Enhanced)
+
+### 2.1 Pattern Matching
+PatternEngine.matchKnownPattern("${target}")
+- Apply known patterns if found (pagination, error handling, rate limiting)
+
+### 2.2 Gather API Information
 - Find official API documentation
 - Locate OpenAPI/Swagger specifications
 - Identify authentication method (OAuth, API key, etc.)
@@ -219,7 +292,17 @@ If no good existing MCP, continue to 1.2.
 
 ---
 
-## PHASE 2: GENERATION (Only if no existing MCP)
+## PHASE 3: AUTHENTICATION
+
+CredentialWizard.loadCredentials("${target}")
+- Existing credentials?
+  - Yes + valid -> Use
+  - Yes + expired -> Refresh
+  - No -> Browser auth flow
+
+---
+
+## PHASE 4: GENERATE MCP (Only if no existing MCP)
 
 ### 2.1 Create Project Structure
 
@@ -328,24 +411,72 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
 ---
 
-## PHASE 3: VALIDATION
+### 4.4 Inject Self-Healing Code
+SelfHealingModule code injection for health monitoring:
 
-### 3.1 Security Checks
-- No hardcoded secrets
-- Input sanitization on all parameters
-- Proper error messages (no sensitive data leakage)
+\`\`\`typescript
+// Add health check capability to generated MCP
+import { recordSuccess, recordFailure, handleError } from './health.js';
 
-### 3.2 Build Verification
-\`\`\`bash
-cd "${outputDir}" && npm install && npm run build
+// In each tool handler, wrap API calls:
+try {
+  const response = await fetch(url, options);
+  if (response.ok) {
+    recordSuccess("${target}", endpoint);
+    return response;
+  } else {
+    recordFailure("${target}", endpoint, response.status, await response.text());
+    const recovery = await handleError("${target}", response.status, "");
+    // Apply recovery action (backoff, retry, refresh-auth)
+  }
+} catch (error) {
+  recordFailure("${target}", endpoint, 0, error.message);
+}
 \`\`\`
-- Fix any errors before proceeding
+
+### 4.5 Apply Rate Limiting from Patterns
+Based on PatternEngine patterns, apply rate limiting:
+- Add delay between API calls if needed
+- Respect Retry-After headers
+- Implement exponential backoff
 
 ---
 
-## PHASE 4: GLOBAL REGISTRATION (CRITICAL - DO NOT SKIP)
+## PHASE 5: VALIDATION GATE
 
-After successful build, register the MCP as a **USER MCP** so it's available in ALL Claude sessions.
+ValidationGate.runValidation("${target}", "${outputDir}")
+Max 3 iterations to fix issues.
+
+### 5.1 Build Validation
+\`\`\`bash
+cd "${outputDir}" && npm install && npm run build
+\`\`\`
+- TypeScript compiles without errors
+- All imports resolve
+- Fix any errors before proceeding
+
+### 5.2 Endpoint Testing
+- Test each generated tool can be called
+- Verify auth headers work
+- Check response parses correctly
+
+### 5.3 Auth Flow Validation
+- Initial auth succeeds
+- Token stored correctly
+- Refresh works (if OAuth)
+
+### 5.4 Integration Test
+- CRUD workflow test (if applicable)
+- Rate limiting respected
+- Errors handled gracefully
+
+**CRITICAL**: If validation fails, attempt auto-fix and retry (up to 3 times)
+
+---
+
+## PHASE 6: AUTO-REGISTER (CRITICAL - DO NOT SKIP)
+
+After successful validation, register the MCP as a **USER MCP** so it's available in ALL Claude sessions.
 
 ### IMPORTANT CONFIG FILE RULES:
 - **USE**: \`~/.claude/user-mcps.json\` (User MCPs - auto-loaded globally)
@@ -353,7 +484,12 @@ After successful build, register the MCP as a **USER MCP** so it's available in 
 - **DO NOT USE**: \`~/.claude/mcp.json\` (requires whitelist in settings.json)
 - **DO NOT USE**: \`~/.mcp.json\` or \`./.mcp.json\` (Project MCPs - causes confusion)
 
-### 4.1 Read existing config
+### 6.1 Cache the Spec
+SmartCache.cacheSpec("${target}")
+- Store spec hash for incremental updates
+- Save endpoint list
+
+### 6.2 Read existing config
 \`\`\`bash
 cat "${mcpConfigPath}"
 \`\`\`
@@ -365,7 +501,7 @@ If the file doesn't exist, create it with this structure:
 }
 \`\`\`
 
-### 4.2 Add the new MCP entry
+### 6.3 Add the new MCP entry
 The config file is JSON with mcpServers wrapper. Add entry INSIDE mcpServers:
 \`\`\`json
 {
@@ -384,20 +520,20 @@ The config file is JSON with mcpServers wrapper. Add entry INSIDE mcpServers:
 
 **CRITICAL**: Entries go INSIDE the "mcpServers" object, NOT at root level!
 
-### 4.3 Write updated config
+### 6.4 Write updated config
 Use the Edit tool to add the new entry inside mcpServers in ${mcpConfigPath}
 
-### 4.4 Verify registration
+### 6.5 Verify registration
 \`\`\`bash
 cat "${mcpConfigPath}" | grep "${input.target}"
 \`\`\`
 
-### 4.5 Notify user
-Tell the user: "✅ MCP '${input.target}' registered as USER MCP at ${outputDir}. Restart Claude to use the new tools."
+### 6.6 Notify user
+Tell the user: "MCP '${input.target}' registered as USER MCP at ${outputDir}. Restart Claude to use the new tools."
 
 ---
 
-## PHASE 5: UPDATE & IMPROVE (Post-Generation Enhancement)
+## PHASE 7: UPDATE & IMPROVE (Post-Generation Enhancement)
 
 After successful registration, run a comprehensive improvement pass on the newly generated MCP.
 
@@ -469,7 +605,7 @@ If important features are found that we didn't implement:
 \`\`\`markdown
 # Changelog
 
-## [1.0.0] - ${new Date().toISOString().split('T')[0]}
+## [1.0.0] - ${new Date().toISOString().split("T")[0]}
 
 ### Added
 - Initial release
@@ -672,14 +808,55 @@ After all improvements, provide a summary:
 
 ---
 
+## CROSS-PLATFORM COMPATIBILITY (REQUIRED)
+
+Generated MCPs must be compatible with:
+- Claude Code (native MCP)
+- GitHub Copilot
+- Gemini
+- Codex
+
+Ensure generated MCPs export universal tool schemas.
+
+**Universal Tool Schema Pattern:**
+\`\`\`typescript
+// Export tools in standard MCP format AND JSON Schema format
+export const tools = [
+  {
+    name: "tool_name",
+    description: "Tool description",
+    inputSchema: {
+      type: "object",
+      properties: { ... },
+      required: [ ... ]
+    }
+  }
+];
+
+// Also export for non-MCP consumers
+export const jsonSchemaTools = tools.map(t => ({
+  name: t.name,
+  description: t.description,
+  parameters: t.inputSchema
+}));
+\`\`\`
+
+---
+
 ## EXECUTION RULES
 
-1. **Be autonomous** - Don't ask for permission at each step
-2. **Be thorough** - Research completely before generating
-3. **Be practical** - If good MCP exists, recommend it
-4. **Always register globally** - Every generated MCP MUST be in ${mcpConfigPath}
-5. **Use absolute paths** - All paths in user-mcps.json must be absolute (starting with /)
-6. **Directory independent** - This works from ANY directory
+1. **Run preflight first** - Always use DependencyChecker before starting
+2. **Check existing MCPs** - Use SmartCache and McpRegistrySearch before regenerating
+3. **Apply patterns** - Use PatternEngine for consistency
+4. **Validate thoroughly** - Use ValidationGate with max 3 retry iterations
+5. **Cache results** - Use SmartCache.cacheSpec() after successful generation
+6. **Monitor health** - Inject SelfHealingModule code
+7. **Be autonomous** - Don't ask for permission at each step
+8. **Be thorough** - Research completely before generating
+9. **Be practical** - If good MCP exists (Score 90+), recommend it
+10. **Always register globally** - Every generated MCP MUST be in ${mcpConfigPath}
+11. **Use absolute paths** - All paths in user-mcps.json must be absolute (starting with /)
+12. **Directory independent** - This works from ANY directory
 
 ---
 
@@ -694,7 +871,7 @@ When spawning sub-agents:
 
 ## RALPH LOOPS (Iterative Testing)
 
-When tests fail during PHASE 3, the orchestrator should spin up a ralph loop:
+When tests fail during PHASE 5 (Validation Gate), the orchestrator should spin up a ralph loop:
 
 1. **Trigger conditions**: Test failures, build errors, type errors
 2. **Loop behavior**:
@@ -742,11 +919,11 @@ When escalating, provide:
 
 ---
 
-**BEGIN EXECUTION NOW. Start with Phase 1: Research.**
+**BEGIN EXECUTION NOW. Start with Phase 0: Preflight Check.**
 `;
 
     return {
-      content: [{ type: 'text', text: instructions }],
+      content: [{ type: "text", text: instructions }],
     };
   }
 
@@ -754,7 +931,7 @@ When escalating, provide:
     target: string,
     fixPath: string,
     mcpConfigPath: string,
-    spec?: string
+    spec?: string,
   ): Promise<{ content: Array<{ type: string; text: string }> }> {
     const instructions = `
 # thesun: FIX MODE for "${target}"
@@ -765,7 +942,7 @@ Execute autonomously WITHOUT stopping for human input unless absolutely necessar
 **Target API:** ${target}
 **Code Location:** ${fixPath}
 **MCP Config:** ${mcpConfigPath}
-${spec ? `**API Spec:** ${spec}` : ''}
+${spec ? `**API Spec:** ${spec}` : ""}
 
 ---
 
@@ -937,7 +1114,7 @@ If important missing features found, add them.
 
 **Update CHANGELOG.md** with all fixes applied:
 \`\`\`markdown
-## [X.Y.Z] - ${new Date().toISOString().split('T')[0]}
+## [X.Y.Z] - ${new Date().toISOString().split("T")[0]}
 
 ### Fixed
 - [List all bugs fixed]
@@ -1006,7 +1183,7 @@ For new skills, follow same format as section 5.8 in CREATE mode.
 
 For existing skills, add to troubleshooting section:
 \`\`\`markdown
-## Recent Fixes (${new Date().toISOString().split('T')[0]})
+## Recent Fixes (${new Date().toISOString().split("T")[0]})
 
 - [List fixes applied]
 \`\`\`
@@ -1037,21 +1214,23 @@ For existing skills, add to troubleshooting section:
 `;
 
     return {
-      content: [{ type: 'text', text: instructions }],
+      content: [{ type: "text", text: instructions }],
     };
   }
 
   private async handleBatchMode(
     targets: string[],
     mcpConfigPath: string,
-    parallel: boolean
+    parallel: boolean,
   ): Promise<{ content: Array<{ type: string; text: string }> }> {
-    const targetList = targets.map(t => `- **${t}**: ${join(MCP_OUTPUT_BASE, `${t}-mcp`)}`).join('\n');
+    const targetList = targets
+      .map((t) => `- **${t}**: ${join(MCP_OUTPUT_BASE, `${t}-mcp`)}`)
+      .join("\n");
 
     const instructions = `
 # thesun: BATCH MCP Generation
 
-You are now operating as **thesun** in BATCH MODE - generating **${targets.length}** MCP servers ${parallel ? 'IN PARALLEL' : 'sequentially'}.
+You are now operating as **thesun** in BATCH MODE - generating **${targets.length}** MCP servers ${parallel ? "IN PARALLEL" : "sequentially"}.
 
 ---
 
@@ -1065,7 +1244,9 @@ ${targetList}
 
 ## EXECUTION STRATEGY
 
-${parallel ? `
+${
+  parallel
+    ? `
 ### Parallel Execution (RECOMMENDED)
 
 You MUST use the Task tool to spawn multiple agents IN PARALLEL. This means:
@@ -1078,13 +1259,17 @@ You MUST use the Task tool to spawn multiple agents IN PARALLEL. This means:
 
 Call the Task tool ${targets.length} times in a SINGLE response with these parameters:
 
-${targets.map((t, i) => `
+${targets
+  .map(
+    (t, i) => `
 **Agent ${i + 1}: ${t}**
 - subagent_type: "general-purpose"
 - description: "Generate ${t} MCP"
 - prompt: [Full thesun generation prompt for ${t}]
 - run_in_background: true (for true parallelism)
-`).join('\n')}
+`,
+  )
+  .join("\n")}
 
 The prompt for each agent should include:
 1. Research phase: Search for existing MCPs, find API docs
@@ -1092,12 +1277,14 @@ The prompt for each agent should include:
 3. Validation phase: Build, test, security scan
 4. Registration phase: Add to ${mcpConfigPath}
 
-` : `
+`
+    : `
 ### Sequential Execution
 
 Process each target one at a time:
-${targets.map((t, i) => `${i + 1}. Generate MCP for **${t}**`).join('\n')}
-`}
+${targets.map((t, i) => `${i + 1}. Generate MCP for **${t}**`).join("\n")}
+`
+}
 
 ---
 
@@ -1123,14 +1310,14 @@ All ${targets.length} MCPs must be:
 `;
 
     return {
-      content: [{ type: 'text', text: instructions }],
+      content: [{ type: "text", text: instructions }],
     };
   }
 
   async run(): Promise<void> {
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
-    console.error('thesun MCP server running on stdio');
+    console.error("thesun MCP server running on stdio");
   }
 }
 
