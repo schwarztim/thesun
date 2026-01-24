@@ -534,3 +534,48 @@ export const PreflightCheckResultSchema = z.object({
 });
 
 export type PreflightCheckResult = z.infer<typeof PreflightCheckResultSchema>;
+
+// ============================================================================
+// MCP Registry Search Types
+// ============================================================================
+
+export const McpQualityScoreSchema = z.object({
+  coverage: z.number().min(0).max(100),
+  maintenance: z.number().min(0).max(100),
+  security: z.number().min(0).max(100),
+  authSupport: z.number().min(0).max(100),
+  overall: z.number().min(0).max(100),
+});
+
+export type McpQualityScore = z.infer<typeof McpQualityScoreSchema>;
+
+export const ExistingMcpSchema = z.object({
+  name: z.string(),
+  source: z.enum([
+    "npm",
+    "github",
+    "smithery",
+    "user-installed",
+    "mcp-registry",
+  ]),
+  url: z.string(),
+  version: z.string().optional(),
+  lastUpdated: z.date().optional(),
+  stars: z.number().optional(),
+  description: z.string().optional(),
+  score: McpQualityScoreSchema.optional(),
+  recommendation: z.enum(["use", "extend", "generate-new"]).optional(),
+});
+
+export type ExistingMcp = z.infer<typeof ExistingMcpSchema>;
+
+export const McpSearchResultSchema = z.object({
+  target: z.string(),
+  searched: z.array(z.string()),
+  found: z.array(ExistingMcpSchema),
+  bestMatch: ExistingMcpSchema.optional(),
+  recommendation: z.enum(["use-existing", "extend-existing", "generate-new"]),
+  timestamp: z.date(),
+});
+
+export type McpSearchResult = z.infer<typeof McpSearchResultSchema>;
