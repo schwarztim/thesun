@@ -740,3 +740,74 @@ export const ValidationGateResultSchema = z.object({
 });
 
 export type ValidationGateResult = z.infer<typeof ValidationGateResultSchema>;
+
+// ============================================================================
+// Smart Cache Types
+// ============================================================================
+
+export const CachedSpecSchema = z.object({
+  target: z.string(),
+  specUrl: z.string(),
+  hash: z.string(), // SHA256
+  fetchedAt: z.coerce.date(),
+  version: z.string().optional(),
+  endpoints: z.array(z.string()), // List of endpoint paths
+});
+
+export type CachedSpec = z.infer<typeof CachedSpecSchema>;
+
+export const CacheDiffSchema = z.object({
+  target: z.string(),
+  added: z.array(z.string()), // New endpoints
+  removed: z.array(z.string()), // Removed endpoints
+  modified: z.array(z.string()), // Changed endpoints
+  unchanged: z.array(z.string()), // Same endpoints
+});
+
+export type CacheDiff = z.infer<typeof CacheDiffSchema>;
+
+export const CacheStatsSchema = z.object({
+  targets: z.array(z.string()),
+  totalSize: z.number(),
+  oldestEntry: z.coerce.date().optional(),
+  newestEntry: z.coerce.date().optional(),
+});
+
+export type CacheStats = z.infer<typeof CacheStatsSchema>;
+
+export const ModifiedFileSchema = z.object({
+  path: z.string(),
+  modifiedAt: z.coerce.date(),
+  backupPath: z.string().optional(),
+});
+
+export type ModifiedFile = z.infer<typeof ModifiedFileSchema>;
+
+export const HarEntrySchema = z.object({
+  request: z.object({
+    method: z.string(),
+    url: z.string(),
+    headers: z.array(z.object({ name: z.string(), value: z.string() })),
+    postData: z.unknown().optional(),
+  }),
+  response: z.object({
+    status: z.number(),
+    statusText: z.string(),
+    headers: z.array(z.object({ name: z.string(), value: z.string() })),
+    content: z.unknown().optional(),
+  }),
+  startedDateTime: z.string(),
+  time: z.number(),
+});
+
+export type HarEntry = z.infer<typeof HarEntrySchema>;
+
+export const HarFileSchema = z.object({
+  log: z.object({
+    version: z.string(),
+    creator: z.object({ name: z.string(), version: z.string() }),
+    entries: z.array(HarEntrySchema),
+  }),
+});
+
+export type HarFile = z.infer<typeof HarFileSchema>;
