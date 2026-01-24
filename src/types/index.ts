@@ -622,3 +622,79 @@ export const CredentialMetaSchema = z.object({
 });
 
 export type CredentialMeta = z.infer<typeof CredentialMetaSchema>;
+
+// ============================================================================
+// Self-Healing / Health Monitoring Types
+// ============================================================================
+
+export const EndpointHealthStatusSchema = z.enum(["ok", "error", "timeout"]);
+
+export type EndpointHealthStatus = z.infer<typeof EndpointHealthStatusSchema>;
+
+export const CheckedEndpointSchema = z.object({
+  endpoint: z.string(),
+  status: EndpointHealthStatusSchema,
+  latencyMs: z.number(),
+  error: z.string().optional(),
+});
+
+export type CheckedEndpoint = z.infer<typeof CheckedEndpointSchema>;
+
+export const HealthCheckResultSchema = z.object({
+  target: z.string(),
+  healthy: z.boolean(),
+  checkedEndpoints: z.array(CheckedEndpointSchema),
+  authValid: z.boolean(),
+  timestamp: z.coerce.date(),
+});
+
+export type HealthCheckResult = z.infer<typeof HealthCheckResultSchema>;
+
+export const RecoveryActionTypeSchema = z.enum([
+  "refresh-auth",
+  "backoff",
+  "regenerate",
+  "retry",
+  "none",
+]);
+
+export type RecoveryActionType = z.infer<typeof RecoveryActionTypeSchema>;
+
+export const RecoveryActionSchema = z.object({
+  action: RecoveryActionTypeSchema,
+  waitMs: z.number().optional(),
+  message: z.string(),
+});
+
+export type RecoveryAction = z.infer<typeof RecoveryActionSchema>;
+
+export const HealthMetricsSchema = z.object({
+  target: z.string(),
+  successCount: z.number(),
+  failureCount: z.number(),
+  successRate: z.number(),
+  lastSuccess: z.coerce.date().optional(),
+  lastFailure: z.coerce.date().optional(),
+  errorPatterns: z.record(z.number()), // statusCode -> count
+});
+
+export type HealthMetrics = z.infer<typeof HealthMetricsSchema>;
+
+export const AuthHealthStatusSchema = z.object({
+  valid: z.boolean(),
+  reason: z.string().optional(),
+  expiresAt: z.number().optional(),
+  needsRefresh: z.boolean(),
+});
+
+export type AuthHealthStatus = z.infer<typeof AuthHealthStatusSchema>;
+
+export const VersionCheckResultSchema = z.object({
+  target: z.string(),
+  expectedVersion: z.string(),
+  actualVersion: z.string().optional(),
+  compatible: z.boolean(),
+  deprecationWarning: z.string().optional(),
+});
+
+export type VersionCheckResult = z.infer<typeof VersionCheckResultSchema>;
