@@ -49,3 +49,4 @@ temp/
 *.sqlite
 *.db
 .thesun/
+.worktrees/
