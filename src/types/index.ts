@@ -579,3 +579,46 @@ export const McpSearchResultSchema = z.object({
 });
 
 export type McpSearchResult = z.infer<typeof McpSearchResultSchema>;
+
+// ============================================================================
+// Credential Wizard Types
+// ============================================================================
+
+export const AuthTypeSchema = z.enum([
+  "oauth2",
+  "oauth2-pkce",
+  "api-key",
+  "bearer",
+  "session-cookie",
+  "basic",
+  "none",
+]);
+
+export type AuthType = z.infer<typeof AuthTypeSchema>;
+
+export const StoredCredentialSchema = z.object({
+  target: z.string(),
+  authType: AuthTypeSchema,
+  accessToken: z.string().optional(),
+  refreshToken: z.string().optional(),
+  apiKey: z.string().optional(),
+  sessionCookie: z.string().optional(),
+  expiresAt: z.number().optional(), // Unix timestamp (milliseconds)
+  scopes: z.array(z.string()).optional(),
+  baseUrl: z.string().optional(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+});
+
+export type StoredCredential = z.infer<typeof StoredCredentialSchema>;
+
+export const CredentialMetaSchema = z.object({
+  target: z.string(),
+  authType: AuthTypeSchema,
+  expiresAt: z.number().optional(),
+  scopes: z.array(z.string()).optional(),
+  lastRefresh: z.coerce.date().optional(),
+  refreshCount: z.number().default(0),
+});
+
+export type CredentialMeta = z.infer<typeof CredentialMetaSchema>;
