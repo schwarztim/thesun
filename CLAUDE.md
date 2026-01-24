@@ -26,12 +26,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Use appropriate Claude model for each task type to optimize cost and quality:
 
-| Task Type | Model | Rationale |
-|-----------|-------|-----------|
-| Planning, architecture, security review | **Opus** | Critical decisions need maximum capability |
-| Initial code generation, discovery | **Sonnet** | Good balance of quality and cost |
-| Test iterations, bug fixes (passes 2+) | **Sonnet** | Bulk of work, cost-efficient |
-| Simple validation, lookups | **Haiku** | Fast and cheap for simple tasks |
+| Task Type                               | Model      | Rationale                                  |
+| --------------------------------------- | ---------- | ------------------------------------------ |
+| Planning, architecture, security review | **Opus**   | Critical decisions need maximum capability |
+| Initial code generation, discovery      | **Sonnet** | Good balance of quality and cost           |
+| Test iterations, bug fixes (passes 2+)  | **Sonnet** | Bulk of work, cost-efficient               |
+| Simple validation, lookups              | **Haiku**  | Fast and cheap for simple tasks            |
 
 ## Plugin Usage
 
@@ -52,6 +52,60 @@ thesun is a Claude Code plugin. After installation, use these commands:
 ```
 
 The `/sun` command spawns the `mcp-builder` agent which runs autonomously through all phases.
+
+### Three Modes
+
+thesun supports three modes of operation:
+
+| Mode                 | Trigger                                              | Use Case                                       |
+| -------------------- | ---------------------------------------------------- | ---------------------------------------------- |
+| **CREATE** (default) | `thesun({ target: "api-name" })`                     | Build MCP from documented APIs                 |
+| **FIX**              | `thesun({ target: "name", fix: "/path" })`           | Fix existing broken MCP                        |
+| **INTERACTIVE**      | `thesun({ target: "name", siteUrl: "https://..." })` | Reverse-engineer undocumented APIs via browser |
+
+### Interactive Mode (Browser Capture)
+
+For sites without public APIs, thesun can reverse-engineer API endpoints by capturing network traffic:
+
+```bash
+# Interactive mode - reverse-engineer via browser capture
+thesun({ target: "myapp", siteUrl: "https://app.example.com" })
+
+# With login URL pre-specified
+thesun({ target: "myapp", siteUrl: "https://app.example.com", loginUrl: "/login" })
+
+# With specific actions to capture
+thesun({
+  target: "myapp",
+  siteUrl: "https://app.example.com",
+  loginUrl: "/auth/signin",
+  actions: ["view profile", "list orders", "create item"]
+})
+
+# If API docs exist, skip browser capture
+thesun({
+  target: "myapp",
+  siteUrl: "https://app.example.com",
+  apiDocsUrl: "https://app.example.com/api/docs"
+})
+```
+
+**Interactive Mode Workflow:**
+
+1. **Clarifying Questions** - Asks for login URL, main actions, API docs availability
+2. **Browser Launch** - Opens Chrome via chrome-devtools-mcp (required dependency)
+3. **Manual Login** - User logs in manually (handles CAPTCHA/2FA)
+4. **Traffic Capture** - Monitors all XHR/fetch requests while user performs actions
+5. **Analysis** - Extracts endpoints, auth patterns, request/response shapes
+6. **User Approval** - Presents captured endpoints for review before generating
+7. **MCP Generation** - Creates TypeScript MCP with auto-refresh authentication
+8. **Registration** - Registers globally in ~/.claude/user-mcps.json
+
+**Requirements for Interactive Mode:**
+
+- chrome-devtools-mcp must be configured and available
+- User must be able to log in manually during capture phase
+- Works best with SPAs that make clear API calls
 
 ## Architecture
 
@@ -151,6 +205,7 @@ npm run orchestrator:status
 ### Bob Instance Isolation
 
 Each tool build runs in its own isolated "bob" instance (a Claude Code session):
+
 - Separate filesystem workspace (via git worktrees for parallel builds)
 - Isolated environment variables (no cross-contamination)
 - Independent caches and state
@@ -161,9 +216,9 @@ Each tool build runs in its own isolated "bob" instance (a Claude Code session):
 ```typescript
 // Create isolated instance for tool build with parallel support
 const instance = await bobManager.create({
-  toolName: 'dynatrace',
+  toolName: "dynatrace",
   // Git worktree for true parallel isolation
-  gitRepo: '/path/to/workspace',
+  gitRepo: "/path/to/workspace",
   branch: `build/dynatrace-${Date.now()}`,
   // Inherit user's MCP servers for knowledge access
   inheritMcpServers: true,
@@ -172,9 +227,13 @@ const instance = await bobManager.create({
 });
 
 // Execute work in isolation - bob can use Confluence, Jira, etc.
-const result = await bobManager.execute(instance.id, 'Research and generate MCP', {
-  phase: 'discovering',
-});
+const result = await bobManager.execute(
+  instance.id,
+  "Research and generate MCP",
+  {
+    phase: "discovering",
+  },
+);
 
 // Clean up (includes worktree removal)
 await bobManager.destroy(instance.id);
@@ -192,6 +251,7 @@ thesun({ targets: ["tesla", "stripe", "jira"] })
 ```
 
 Each target gets:
+
 - Its own git worktree (isolated working directory)
 - Its own bob instance (separate Claude session)
 - Access to all user's MCP servers (for searching docs, knowledge bases)
@@ -253,6 +313,7 @@ Each job has its own dedicated watcher to prevent runaway processes:
 ```
 
 **Per-Job Watcher** (`governance/job-watcher.ts`):
+
 - Maintains full context for its job
 - Tracks progress checkpoints
 - Enforces phase timeouts (10 min default)
@@ -262,6 +323,7 @@ Each job has its own dedicated watcher to prevent runaway processes:
 - Triggers loop-back when needed
 
 **Supervisor** (`governance/supervisor.ts`):
+
 - Watches all job watchers
 - Enforces global limits ($200/hour, 10 concurrent jobs)
 - Performs system health checks
@@ -313,6 +375,7 @@ thesun is itself subject to iterative improvement. The system:
 ```
 
 To improve thesun itself, run:
+
 ```bash
 npm run self-improve -- --analyze-failures
 ```
@@ -364,7 +427,7 @@ Generated MCPs MUST be generic and reusable. Follow these rules:
 const baseUrl = process.env.DYNATRACE_BASE_URL;
 
 // BAD - hardcoded company URL
-const baseUrl = 'https://mycompany.dynatrace.com';
+const baseUrl = "https://mycompany.dynatrace.com";
 ```
 
 ## Cross-Platform Requirements
@@ -385,14 +448,14 @@ Generated MCPs follow the MCP Authorization Specification (OAuth 2.1) with enter
 
 Based on [MCP Security Best Practices](https://modelcontextprotocol.io/specification/draft/basic/security_best_practices):
 
-| Requirement | Type | Implementation |
-|-------------|------|----------------|
-| **NO Token Passthrough** | MUST NOT | Tokens are NEVER passed from client to downstream APIs |
-| **NO Session Authentication** | MUST NOT | Sessions for state only, not auth |
-| **Token Audience Validation** | MUST | Every token validated for THIS server (RFC 8707) |
-| **PKCE Required** | MUST | All auth code flows use S256 code challenge |
-| **Short-lived Tokens** | SHOULD | 15-30 minute access tokens with refresh |
-| **Scope Minimization** | SHOULD | Start with `mcp:tools-basic`, elevate on demand |
+| Requirement                   | Type     | Implementation                                         |
+| ----------------------------- | -------- | ------------------------------------------------------ |
+| **NO Token Passthrough**      | MUST NOT | Tokens are NEVER passed from client to downstream APIs |
+| **NO Session Authentication** | MUST NOT | Sessions for state only, not auth                      |
+| **Token Audience Validation** | MUST     | Every token validated for THIS server (RFC 8707)       |
+| **PKCE Required**             | MUST     | All auth code flows use S256 code challenge            |
+| **Short-lived Tokens**        | SHOULD   | 15-30 minute access tokens with refresh                |
+| **Scope Minimization**        | SHOULD   | Start with `mcp:tools-basic`, elevate on demand        |
 
 ### Authentication Architecture
 
@@ -427,10 +490,10 @@ The security module supports multiple identity providers:
 ```typescript
 // Entra ID (Azure AD)
 const authConfig = {
-  provider: 'entra_id',
-  issuer: 'https://login.microsoftonline.com/{tenant}/v2.0',
+  provider: "entra_id",
+  issuer: "https://login.microsoftonline.com/{tenant}/v2.0",
   tenantId: process.env.AZURE_TENANT_ID,
-  useOnBehalfOf: true,  // For downstream service access
+  useOnBehalfOf: true, // For downstream service access
 };
 
 // Okta, Auth0, Keycloak work similarly
@@ -470,7 +533,7 @@ const result = await contextManager.addSearchResult(
   source,
   content,
   query,
-  relevanceEvaluator
+  relevanceEvaluator,
 );
 
 // Low relevance (<0.3): Discarded immediately
@@ -481,16 +544,17 @@ const result = await contextManager.addSearchResult(
 
 ### Token Budget
 
-| Budget Type | Default | Purpose |
-|-------------|---------|---------|
-| Search Results | 10,000 tokens | Per-search limit |
-| Total Context | 50,000 tokens | All accumulated context |
-| Reserved for Reasoning | 20,000 tokens | Agent thinking space |
-| Warning Threshold | 80% | Triggers pruning |
+| Budget Type            | Default       | Purpose                 |
+| ---------------------- | ------------- | ----------------------- |
+| Search Results         | 10,000 tokens | Per-search limit        |
+| Total Context          | 50,000 tokens | All accumulated context |
+| Reserved for Reasoning | 20,000 tokens | Agent thinking space    |
+| Warning Threshold      | 80%           | Triggers pruning        |
 
 ### Automatic Eviction
 
 When budget is exceeded, low-relevance items are evicted:
+
 1. Never evict verified facts
 2. Evict by relevance (lowest first)
 3. Then by age (oldest first)
@@ -520,6 +584,7 @@ For background execution and plugin rotation:
 ### Plugin Auto-Refresh
 
 The `BobOrchestrator` monitors plugin.json for changes:
+
 - Background polling every 30 seconds
 - Emits `pluginUpdated` event on changes
 - Syncs new plugin files to bob workspaces

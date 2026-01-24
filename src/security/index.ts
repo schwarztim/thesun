@@ -39,7 +39,26 @@ export {
   type ApiKeyPlacement,
 } from './api-key-auth.js';
 
-// Security Hardening (applies to both auth methods)
+// HAR-based Authentication (for webapps without APIs)
+export {
+  HARAuthManager,
+  HARAuthConfigSchema,
+  generateHARAuthCodeSnippet,
+  generateHARAuthEnvDocs,
+  type HARAuthConfig,
+  type ExtractedAuth,
+} from './har-auth.js';
+
+// Unified Authentication Generator (supports all methods with fallback)
+export {
+  generateUnifiedAuthCode,
+  generateUnifiedEnvExample,
+  generateUnifiedAuthReadme,
+  type AuthMethod,
+  type UnifiedAuthConfig,
+} from './unified-auth-generator.js';
+
+// Security Hardening (applies to all auth methods)
 export {
   SecurityHardening,
   SecurityConfigSchema,

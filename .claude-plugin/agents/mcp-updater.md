@@ -108,9 +108,43 @@ Then aggregate results and apply fixes.
 
 ## Execution Flow
 
-### Phase 0: Performance Analysis (CRITICAL - Run First)
+### Phase 0: Fork/Upstream Sync (Run First if Applicable)
 
-Before searching for new features, analyze HOW the MCP is implemented.
+**Check if MCP is a fork and sync with upstream before making changes.**
+
+```bash
+# Use thesun's fork-manager utility
+import { detectForkStatus, shouldSyncFromUpstream, syncFromUpstream } from '../utils/fork-manager.js';
+
+const forkInfo = detectForkStatus('/path/to/mcp');
+
+if (forkInfo.hasUpstream) {
+  console.log(`Upstream detected: ${forkInfo.upstreamUrl}`);
+  console.log(`Commits behind: ${forkInfo.commitsBehind}`);
+  console.log(`Commits ahead: ${forkInfo.commitsAhead}`);
+
+  // Check if we should sync
+  if (shouldSyncFromUpstream('/path/to/mcp', forkInfo)) {
+    syncFromUpstream('/path/to/mcp', forkInfo);
+    console.log('✓ Synced from upstream');
+  }
+}
+```
+
+**Why sync first:**
+- Avoids duplicating work already done upstream
+- Prevents merge conflicts later
+- Ensures we're improving latest version
+- Might fix issues we were planning to fix
+
+**After sync:**
+- Rebuild: `npm install && npm run build`
+- Re-test to ensure upstream changes work
+- Continue with performance analysis
+
+### Phase 1: Performance Analysis (CRITICAL - Run Next)
+
+After syncing with upstream (if applicable), analyze HOW the MCP is implemented.
 
 **Step 1: Detect Anti-Patterns**
 
