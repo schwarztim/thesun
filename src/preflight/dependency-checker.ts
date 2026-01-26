@@ -10,36 +10,30 @@ import { logger } from "../observability/logger.js";
 import type { DependencyStatus, PreflightCheckResult } from "../types/index.js";
 
 /**
- * Platform-specific Chrome browser paths
+ * Platform-specific Firefox browser paths
  */
-const CHROME_PATHS: Record<string, string[]> = {
+const FIREFOX_PATHS: Record<string, string[]> = {
   darwin: [
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    join(
-      homedir(),
-      "Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    ),
+    "/Applications/Firefox.app/Contents/MacOS/firefox",
+    join(homedir(), "Applications/Firefox.app/Contents/MacOS/firefox"),
   ],
   linux: [
-    "/usr/bin/google-chrome",
-    "/usr/bin/google-chrome-stable",
-    "/usr/bin/chromium",
-    "/usr/bin/chromium-browser",
-    "/snap/bin/chromium",
+    "/usr/bin/firefox",
+    "/usr/bin/firefox-esr",
+    "/snap/bin/firefox",
+    "/usr/lib/firefox/firefox",
+    "/opt/firefox/firefox",
   ],
   win32: [
     join(
       process.env.PROGRAMFILES || "C:\\Program Files",
-      "Google\\Chrome\\Application\\chrome.exe",
+      "Mozilla Firefox\\firefox.exe",
     ),
     join(
       process.env["PROGRAMFILES(X86)"] || "C:\\Program Files (x86)",
-      "Google\\Chrome\\Application\\chrome.exe",
+      "Mozilla Firefox\\firefox.exe",
     ),
-    join(
-      process.env.LOCALAPPDATA || "",
-      "Google\\Chrome\\Application\\chrome.exe",
-    ),
+    join(process.env.LOCALAPPDATA || "", "Mozilla Firefox\\firefox.exe"),
   ],
 };
 
@@ -67,8 +61,8 @@ export class DependencyChecker {
     logger.info("Running preflight dependency checks");
 
     const checks = await Promise.all([
-      this.checkChromeDevTools(),
-      this.checkChromeBrowser(),
+      this.checkFirefoxDevTools(),
+      this.checkFirefoxBrowser(),
       this.checkThesunDirectory(),
     ]);
 
@@ -93,10 +87,10 @@ export class DependencyChecker {
   }
 
   /**
-   * Checks if chrome-devtools-mcp is configured in ~/.claude/user-mcps.json
+   * Checks if firefox-devtools-mcp is configured in ~/.claude/user-mcps.json
    */
-  async checkChromeDevTools(): Promise<DependencyStatus> {
-    const name = "chrome-devtools-mcp";
+  async checkFirefoxDevTools(): Promise<DependencyStatus> {
+    const name = "firefox-devtools-mcp";
 
     try {
       if (!existsSync(this.userMcpsPath)) {
@@ -105,7 +99,7 @@ export class DependencyChecker {
           required: true,
           available: false,
           error: `Config file not found: ${this.userMcpsPath}`,
-          installCommand: this.getChromeDevToolsInstallCommand(),
+          installCommand: this.getFirefoxDevToolsInstallCommand(),
         };
       }
 
@@ -120,21 +114,21 @@ export class DependencyChecker {
           required: true,
           available: false,
           error: `Failed to parse ${this.userMcpsPath}: Invalid JSON`,
-          installCommand: this.getChromeDevToolsInstallCommand(),
+          installCommand: this.getFirefoxDevToolsInstallCommand(),
         };
       }
 
-      // Check for chrome-devtools in any form
+      // Check for firefox-devtools in any form
       const mcpServers = config.mcpServers || {};
-      const hasChromeDevTools = Object.keys(mcpServers).some(
+      const hasFirefoxDevTools = Object.keys(mcpServers).some(
         (key) =>
-          key.includes("chrome-devtools") ||
-          key.includes("chrome_devtools") ||
-          key.includes("chromedevtools"),
+          key.includes("firefox-devtools") ||
+          key.includes("firefox_devtools") ||
+          key.includes("firefoxdevtools"),
       );
 
-      if (hasChromeDevTools) {
-        logger.debug("chrome-devtools-mcp found in user-mcps.json");
+      if (hasFirefoxDevTools) {
+        logger.debug("firefox-devtools-mcp found in user-mcps.json");
         return {
           name,
           required: true,
@@ -146,7 +140,7 @@ export class DependencyChecker {
         name,
         required: true,
         available: false,
-        installCommand: this.getChromeDevToolsInstallCommand(),
+        installCommand: this.getFirefoxDevToolsInstallCommand(),
       };
     } catch (error) {
       const errorMessage =
@@ -156,27 +150,27 @@ export class DependencyChecker {
         required: true,
         available: false,
         error: errorMessage,
-        installCommand: this.getChromeDevToolsInstallCommand(),
+        installCommand: this.getFirefoxDevToolsInstallCommand(),
       };
     }
   }
 
   /**
-   * Checks if Chrome browser is installed on the system
+   * Checks if Firefox browser is installed on the system
    */
-  async checkChromeBrowser(): Promise<DependencyStatus> {
-    const name = "chrome-browser";
+  async checkFirefoxBrowser(): Promise<DependencyStatus> {
+    const name = "firefox-browser";
     const currentPlatform = platform();
-    const paths = CHROME_PATHS[currentPlatform] || [];
+    const paths = FIREFOX_PATHS[currentPlatform] || [];
 
-    for (const chromePath of paths) {
-      if (existsSync(chromePath)) {
-        logger.debug("Chrome browser found", { path: chromePath });
+    for (const firefoxPath of paths) {
+      if (existsSync(firefoxPath)) {
+        logger.debug("Firefox browser found", { path: firefoxPath });
         return {
           name,
           required: true,
           available: true,
-          version: chromePath,
+          version: firefoxPath,
         };
       }
     }
@@ -185,7 +179,7 @@ export class DependencyChecker {
       name,
       required: true,
       available: false,
-      installCommand: this.getChromeInstallCommand(currentPlatform),
+      installCommand: this.getFirefoxInstallCommand(currentPlatform),
     };
   }
 
@@ -264,25 +258,25 @@ export class DependencyChecker {
   }
 
   /**
-   * Returns the install command for chrome-devtools-mcp
+   * Returns the install command for firefox-devtools-mcp
    */
-  private getChromeDevToolsInstallCommand(): string {
-    return "See https://github.com/anthropics/mcp-servers/tree/main/chrome-devtools-mcp for installation instructions";
+  private getFirefoxDevToolsInstallCommand(): string {
+    return "See https://github.com/anthropics/anthropic-quickstarts/tree/main/mcp-servers/firefox-devtools-mcp for installation instructions";
   }
 
   /**
-   * Returns the platform-specific Chrome install command
+   * Returns the platform-specific Firefox install command
    */
-  private getChromeInstallCommand(currentPlatform: string): string {
+  private getFirefoxInstallCommand(currentPlatform: string): string {
     switch (currentPlatform) {
       case "darwin":
-        return "brew install --cask google-chrome";
+        return "brew install --cask firefox";
       case "linux":
-        return "sudo apt install google-chrome-stable (or your distro's package manager)";
+        return "sudo apt install firefox (or your distro's package manager)";
       case "win32":
-        return "Download from https://www.google.com/chrome/";
+        return "Download from https://www.mozilla.org/firefox/";
       default:
-        return "Download from https://www.google.com/chrome/";
+        return "Download from https://www.mozilla.org/firefox/";
     }
   }
 }

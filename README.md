@@ -84,7 +84,7 @@ stripe-mcp v1.0.0
 
 ### Browser-Based Discovery
 
-Reverse-engineer undocumented APIs by capturing network traffic via `chrome-devtools-mcp`.
+Reverse-engineer undocumented APIs by capturing network traffic via `firefox-devtools-mcp`.
 
 </td>
 <td width="50%">
@@ -134,7 +134,7 @@ flowchart TB
 
     subgraph Preflight["🔍 Preflight Checks"]
         DEP["Dependency Checker"]
-        CHROME["Chrome Detection"]
+        FIREFOX["Firefox Detection"]
         DIR["Directory Setup"]
     end
 
@@ -191,7 +191,7 @@ graph LR
     end
 
     subgraph Preflight["Preflight"]
-        DC["dependency-checker.ts<br/>Chrome, MCP Detection"]
+        DC["dependency-checker.ts<br/>Firefox, MCP Detection"]
     end
 
     subgraph Discovery["Discovery"]
@@ -241,7 +241,7 @@ sequenceDiagram
     participant User
     participant thesun
     participant Registry as MCP Registry
-    participant Browser as Chrome DevTools
+    participant Browser as Firefox DevTools
     participant API as Target API
     participant Validator
 
@@ -261,7 +261,7 @@ sequenceDiagram
         thesun->>thesun: Search OpenAPI specs
         thesun->>thesun: Parse documentation
     and Browser Testing
-        thesun->>Browser: Launch Chrome
+        thesun->>Browser: Launch Firefox
         Browser->>API: Capture network requests
         Browser-->>thesun: HAR with endpoints
     end
@@ -389,7 +389,7 @@ flowchart TB
     end
 
     subgraph BrowserFlow["Browser Auth Flow"]
-        LAUNCH["Launch Chrome"]
+        LAUNCH["Launch Firefox"]
         LOGIN["User Logs In"]
         CAPTURE["Capture Tokens"]
     end
@@ -527,8 +527,8 @@ flowchart TB
 ### Prerequisites
 
 - Node.js 18+
-- Chrome browser (for browser-based discovery)
-- `chrome-devtools-mcp` installed
+- Firefox browser (for browser-based discovery)
+- `firefox-devtools-mcp` installed
 
 ### Installation
 

@@ -249,8 +249,8 @@ Execute the complete pipeline below WITHOUT stopping for human input.
 ## PHASE 0: PREFLIGHT CHECK
 
 Run DependencyChecker.runPreflight() to verify all dependencies:
-- chrome-devtools-mcp available?
-- Chrome browser available?
+- firefox-devtools-mcp available?
+- Firefox browser available?
 - ~/.thesun/ ready?
 
 **Decision:**

@@ -9,13 +9,22 @@
  * This ensures generated MCPs work even when official APIs aren't available.
  */
 
-import { generateApiKeyAuthSnippet } from './api-key-auth.js';
-import { generateAuthCodeSnippet } from './auth-manager.js';
-import { generateHARAuthCodeSnippet, generateHARAuthEnvDocs } from './har-auth.js';
-import type { OAuthConfig } from './auth-manager.js';
-import type { ApiKeyConfig } from './api-key-auth.js';
+import { generateApiKeyAuthSnippet } from "./api-key-auth.js";
+import { generateAuthCodeSnippet } from "./auth-manager.js";
+import {
+  generateHARAuthCodeSnippet,
+  generateHARAuthEnvDocs,
+} from "./har-auth.js";
+import type { OAuthConfig } from "./auth-manager.js";
+import type { ApiKeyConfig } from "./api-key-auth.js";
 
-export type AuthMethod = 'oauth' | 'api_key' | 'bearer' | 'basic' | 'har' | 'auto';
+export type AuthMethod =
+  | "oauth"
+  | "api_key"
+  | "bearer"
+  | "basic"
+  | "har"
+  | "auto";
 
 export interface UnifiedAuthConfig {
   toolName: string;
@@ -29,13 +38,13 @@ export interface UnifiedAuthConfig {
  * Generate unified auth code that supports multiple authentication methods
  */
 export function generateUnifiedAuthCode(config: UnifiedAuthConfig): string {
-  const { toolName, primaryMethod = 'auto', enableHARFallback = true } = config;
-  const envPrefix = toolName.toUpperCase().replace(/-/g, '_');
+  const { toolName, primaryMethod = "auto", enableHARFallback = true } = config;
+  const envPrefix = toolName.toUpperCase().replace(/-/g, "_");
 
   // Always include HAR auth as fallback
   const harAuthCode = generateHARAuthCodeSnippet(toolName);
 
-  if (primaryMethod === 'har' || primaryMethod === 'auto') {
+  if (primaryMethod === "har" || primaryMethod === "auto") {
     // HAR-first authentication (for webapps without APIs)
     return `
 ${harAuthCode}
@@ -105,7 +114,7 @@ export async function initializeAuth(): Promise<void> {
     console.error('  Set ${envPrefix}_API_KEY in your .env file');
     console.error('');
     console.error('Option 2: Use HAR File');
-    console.error('  1. Open Chrome DevTools (F12)');
+    console.error('  1. Open Firefox DevTools (F12)');
     console.error('  2. Go to Network tab');
     console.error('  3. Log into ${toolName}');
     console.error('  4. Right-click → "Save all as HAR with content"');
@@ -122,7 +131,7 @@ export async function initializeAuth(): Promise<void> {
   }
 
   // For OAuth or API key with HAR fallback
-  let primaryAuthCode = '';
+  let primaryAuthCode = "";
   if (config.oauthConfig) {
     primaryAuthCode = generateAuthCodeSnippet(config.oauthConfig);
   } else if (config.apiKeyConfig) {
@@ -132,7 +141,7 @@ export async function initializeAuth(): Promise<void> {
   return `
 ${primaryAuthCode}
 
-${enableHARFallback ? harAuthCode : ''}
+${enableHARFallback ? harAuthCode : ""}
 
 /**
  * Unified authentication with fallback to HAR
@@ -168,7 +177,7 @@ ${
     console.error('[Auth] HAR auth also failed:', harError);
   }
 `
-    : ''
+    : ""
 }
 
   throw new Error('All authentication methods failed');
@@ -190,7 +199,7 @@ async function getPrimaryAuth(): Promise<Record<string, string> | null> {
  */
 export function generateUnifiedEnvExample(config: UnifiedAuthConfig): string {
   const { toolName, enableHARFallback = true } = config;
-  const envPrefix = toolName.toUpperCase().replace(/-/g, '_');
+  const envPrefix = toolName.toUpperCase().replace(/-/g, "_");
 
   let envDoc = `# ${toolName.toUpperCase()} MCP Authentication Configuration
 # Generated: ${new Date().toISOString()}
@@ -249,7 +258,7 @@ MAX_RETRIES=3
 # 3. If no API → use Option 5 (HAR File)
 #
 # HAR File Setup:
-# 1. Open Chrome, go to ${toolName}
+# 1. Open Firefox, go to ${toolName}
 # 2. Open DevTools (F12) → Network tab
 # 3. Log in to ${toolName}
 # 4. Right-click any request → "Save all as HAR with content"
@@ -266,7 +275,7 @@ MAX_RETRIES=3
  */
 export function generateUnifiedAuthReadme(config: UnifiedAuthConfig): string {
   const { toolName, enableHARFallback = true } = config;
-  const envPrefix = toolName.toUpperCase().replace(/-/g, '_');
+  const envPrefix = toolName.toUpperCase().replace(/-/g, "_");
 
   return `## Authentication
 
@@ -301,7 +310,7 @@ ${envPrefix}_HAR_FILE_PATH=./auth/${toolName}.har
 
 **Capturing a HAR file:**
 
-1. Open Chrome and go to ${toolName}
+1. Open Firefox and go to ${toolName}
 2. Open DevTools (F12) and go to the **Network** tab
 3. Log in to ${toolName} (complete any 2FA if required)
 4. Right-click on any network request → **Save all as HAR with content**
@@ -326,7 +335,7 @@ The MCP will:
 4. Extract and cache your credentials
 
 `
-    : ''
+    : ""
 }
 
 ### Authentication Priority
@@ -335,8 +344,8 @@ The MCP tries authentication methods in this order:
 
 1. **API Key** (if \`${envPrefix}_API_KEY\` is set)
 2. **OAuth** (if \`${envPrefix}_CLIENT_ID\` is set)
-${enableHARFallback ? `3. **HAR File** (if \`${envPrefix}_HAR_FILE_PATH\` is set)` : ''}
-${enableHARFallback ? `4. **Interactive Login** (if \`${envPrefix}_LOGIN_URL\` is set and allowed)` : ''}
+${enableHARFallback ? `3. **HAR File** (if \`${envPrefix}_HAR_FILE_PATH\` is set)` : ""}
+${enableHARFallback ? `4. **Interactive Login** (if \`${envPrefix}_LOGIN_URL\` is set and allowed)` : ""}
 
 This ensures the MCP works even when official API access isn't available.
 

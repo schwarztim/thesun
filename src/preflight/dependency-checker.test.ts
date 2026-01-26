@@ -43,13 +43,13 @@ describe("DependencyChecker", () => {
     vi.restoreAllMocks();
   });
 
-  describe("checkChromeDevTools", () => {
-    it("returns available=true when chrome-devtools-mcp is configured", async () => {
+  describe("checkFirefoxDevTools", () => {
+    it("returns available=true when firefox-devtools-mcp is configured", async () => {
       const mockConfig = {
         mcpServers: {
-          "chrome-devtools": {
+          "firefox-devtools": {
             command: "node",
-            args: ["/path/to/chrome-devtools-mcp/dist/index.js"],
+            args: ["/path/to/firefox-devtools-mcp/dist/index.js"],
           },
         },
       };
@@ -57,14 +57,14 @@ describe("DependencyChecker", () => {
       vi.mocked(existsSync).mockReturnValue(true);
       vi.mocked(readFileSync).mockReturnValue(JSON.stringify(mockConfig));
 
-      const result = await checker.checkChromeDevTools();
+      const result = await checker.checkFirefoxDevTools();
 
-      expect(result.name).toBe("chrome-devtools-mcp");
+      expect(result.name).toBe("firefox-devtools-mcp");
       expect(result.required).toBe(true);
       expect(result.available).toBe(true);
     });
 
-    it("returns available=false with install command when chrome-devtools-mcp is missing", async () => {
+    it("returns available=false with install command when firefox-devtools-mcp is missing", async () => {
       const mockConfig = {
         mcpServers: {
           "other-mcp": {
@@ -77,21 +77,21 @@ describe("DependencyChecker", () => {
       vi.mocked(existsSync).mockReturnValue(true);
       vi.mocked(readFileSync).mockReturnValue(JSON.stringify(mockConfig));
 
-      const result = await checker.checkChromeDevTools();
+      const result = await checker.checkFirefoxDevTools();
 
-      expect(result.name).toBe("chrome-devtools-mcp");
+      expect(result.name).toBe("firefox-devtools-mcp");
       expect(result.required).toBe(true);
       expect(result.available).toBe(false);
       expect(result.installCommand).toBeDefined();
-      expect(result.installCommand).toContain("chrome-devtools-mcp");
+      expect(result.installCommand).toContain("firefox-devtools-mcp");
     });
 
     it("returns available=false when user-mcps.json does not exist", async () => {
       vi.mocked(existsSync).mockReturnValue(false);
 
-      const result = await checker.checkChromeDevTools();
+      const result = await checker.checkFirefoxDevTools();
 
-      expect(result.name).toBe("chrome-devtools-mcp");
+      expect(result.name).toBe("firefox-devtools-mcp");
       expect(result.available).toBe(false);
       expect(result.error).toContain("not found");
     });
@@ -100,66 +100,66 @@ describe("DependencyChecker", () => {
       vi.mocked(existsSync).mockReturnValue(true);
       vi.mocked(readFileSync).mockReturnValue("{ invalid json }");
 
-      const result = await checker.checkChromeDevTools();
+      const result = await checker.checkFirefoxDevTools();
 
       expect(result.available).toBe(false);
       expect(result.error).toBeDefined();
     });
   });
 
-  describe("checkChromeBrowser", () => {
-    it("detects Chrome on macOS", async () => {
+  describe("checkFirefoxBrowser", () => {
+    it("detects Firefox on macOS", async () => {
       vi.mocked(platform).mockReturnValue("darwin");
       vi.mocked(existsSync).mockImplementation((path) => {
-        if (typeof path === "string" && path.includes("Google Chrome.app")) {
+        if (typeof path === "string" && path.includes("Firefox.app")) {
           return true;
         }
         return false;
       });
 
-      const result = await checker.checkChromeBrowser();
+      const result = await checker.checkFirefoxBrowser();
 
-      expect(result.name).toBe("chrome-browser");
+      expect(result.name).toBe("firefox-browser");
       expect(result.available).toBe(true);
     });
 
-    it("detects Chrome on Linux", async () => {
+    it("detects Firefox on Linux", async () => {
       vi.mocked(platform).mockReturnValue("linux");
       vi.mocked(existsSync).mockImplementation((path) => {
-        if (typeof path === "string" && path.includes("google-chrome")) {
+        if (typeof path === "string" && path.includes("/usr/bin/firefox")) {
           return true;
         }
         return false;
       });
 
-      const result = await checker.checkChromeBrowser();
+      const result = await checker.checkFirefoxBrowser();
 
-      expect(result.name).toBe("chrome-browser");
+      expect(result.name).toBe("firefox-browser");
       expect(result.available).toBe(true);
     });
 
-    it("detects Chrome on Windows", async () => {
+    it("detects Firefox on Windows", async () => {
       vi.mocked(platform).mockReturnValue("win32");
       vi.mocked(existsSync).mockImplementation((path) => {
-        if (typeof path === "string" && path.includes("chrome.exe")) {
+        if (typeof path === "string" && path.includes("firefox.exe")) {
           return true;
         }
         return false;
       });
 
-      const result = await checker.checkChromeBrowser();
+      const result = await checker.checkFirefoxBrowser();
 
-      expect(result.name).toBe("chrome-browser");
+      expect(result.name).toBe("firefox-browser");
       expect(result.available).toBe(true);
     });
 
-    it("returns available=false when Chrome is not found", async () => {
+    it("returns available=false when Firefox is not found", async () => {
       vi.mocked(platform).mockReturnValue("darwin");
       vi.mocked(existsSync).mockReturnValue(false);
 
-      const result = await checker.checkChromeBrowser();
+      const result = await checker.checkFirefoxBrowser();
 
-      expect(result.name).toBe("chrome-browser");
+      expect(result.name).toBe("firefox-browser");
       expect(result.available).toBe(false);
       expect(result.installCommand).toBeDefined();
     });
@@ -233,9 +233,9 @@ describe("DependencyChecker", () => {
     it("passes when all dependencies are available", async () => {
       const mockConfig = {
         mcpServers: {
-          "chrome-devtools": {
+          "firefox-devtools": {
             command: "node",
-            args: ["/path/to/chrome-devtools-mcp/dist/index.js"],
+            args: ["/path/to/firefox-devtools-mcp/dist/index.js"],
           },
         },
       };
@@ -252,7 +252,7 @@ describe("DependencyChecker", () => {
       expect(result.timestamp).toBeInstanceOf(Date);
     });
 
-    it("fails when chrome-devtools-mcp is missing", async () => {
+    it("fails when firefox-devtools-mcp is missing", async () => {
       const mockConfig = {
         mcpServers: {},
       };
@@ -262,8 +262,8 @@ describe("DependencyChecker", () => {
         if (typeof path === "string") {
           // user-mcps.json exists
           if (path.includes("user-mcps.json")) return true;
-          // Chrome exists
-          if (path.includes("Google Chrome.app")) return true;
+          // Firefox exists
+          if (path.includes("Firefox.app")) return true;
           // thesun directory exists
           if (path.includes(".thesun")) return true;
         }
@@ -274,7 +274,7 @@ describe("DependencyChecker", () => {
       const result = await checker.runPreflight();
 
       expect(result.passed).toBe(false);
-      expect(result.missingRequired).toContain("chrome-devtools-mcp");
+      expect(result.missingRequired).toContain("firefox-devtools-mcp");
     });
 
     it("includes all dependency statuses in result", async () => {
@@ -283,8 +283,8 @@ describe("DependencyChecker", () => {
       const result = await checker.runPreflight();
 
       const dependencyNames = result.dependencies.map((d) => d.name);
-      expect(dependencyNames).toContain("chrome-devtools-mcp");
-      expect(dependencyNames).toContain("chrome-browser");
+      expect(dependencyNames).toContain("firefox-devtools-mcp");
+      expect(dependencyNames).toContain("firefox-browser");
       expect(dependencyNames).toContain("thesun-directory");
     });
   });
@@ -295,28 +295,28 @@ describe("DependencyChecker", () => {
         passed: false,
         dependencies: [
           {
-            name: "chrome-devtools-mcp",
+            name: "firefox-devtools-mcp",
             required: true,
             available: false,
-            installCommand: "npm install -g chrome-devtools-mcp",
+            installCommand:
+              "See https://github.com/anthropics/anthropic-quickstarts for installation",
           },
           {
-            name: "chrome-browser",
+            name: "firefox-browser",
             required: true,
             available: false,
-            installCommand: "brew install --cask google-chrome",
+            installCommand: "brew install --cask firefox",
           },
         ],
-        missingRequired: ["chrome-devtools-mcp", "chrome-browser"],
+        missingRequired: ["firefox-devtools-mcp", "firefox-browser"],
         timestamp: new Date(),
       };
 
       const message = checker.formatMissingDependencies(result);
 
       expect(message).toContain("Missing required dependencies");
-      expect(message).toContain("chrome-devtools-mcp");
-      expect(message).toContain("chrome-browser");
-      expect(message).toContain("npm install");
+      expect(message).toContain("firefox-devtools-mcp");
+      expect(message).toContain("firefox-browser");
       expect(message).toContain("brew install");
     });
 
@@ -325,7 +325,7 @@ describe("DependencyChecker", () => {
         passed: true,
         dependencies: [
           {
-            name: "chrome-devtools-mcp",
+            name: "firefox-devtools-mcp",
             required: true,
             available: true,
           },
