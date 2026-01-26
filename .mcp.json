@@ -1,0 +1,8 @@
+{
+  "thesun": {
+    "command": "node",
+    "args": [
+      "/Users/timothy.schwarz/Scripts/mcp-servers/thesun/dist/mcp-server/index.js"
+    ]
+  }
+}
