@@ -442,7 +442,9 @@ Then create the project structure:
 \`\`\`
 ${outputDir}/
 ├── src/
-│   └── index.ts          # MCP server entry point
+│   ├── index.ts          # MCP server entry point
+│   ├── browser-auth.ts   # Auto-renewing browser authentication
+│   └── types.ts          # Type definitions
 ├── scripts/
 │   ├── install.sh        # Linux/macOS installer
 │   └── install.ps1       # Windows PowerShell installer
@@ -450,6 +452,111 @@ ${outputDir}/
 ├── tsconfig.json
 ├── .env.example          # Required environment variables
 └── README.md             # With easy install instructions
+\`\`\`
+
+**CRITICAL: browser-auth.ts Module**
+
+Copy the browser auth template from thesun:
+\`\`\`bash
+cp ${join(homedir(), "Scripts", "mcp-servers", "thesun", "src", "templates", "browser-auth.ts")} ${outputDir}/src/browser-auth.ts
+\`\`\`
+
+Then inject the Playwright capture logic at line 200 (captureAuthWithPlaywright method):
+
+\`\`\`typescript
+private async captureAuthWithPlaywright(): Promise<TokenData> {
+  // Import Playwright MCP tool caller (injected at generation time)
+  const { callMcpTool } = await import('./mcp-tool-caller.js');
+
+  // Navigate to login
+  await callMcpTool('mcp__plugin_playwright_playwright__browser_navigate', {
+    url: this.loginUrl
+  });
+
+  console.error('Waiting for login... Press Enter when done.');
+  await new Promise(resolve => {
+    process.stdin.once('data', resolve);
+  });
+
+  // Capture all auth data
+  const [localStorage, sessionStorage, cookies, network] = await Promise.all([
+    callMcpTool('mcp__plugin_playwright_playwright__browser_evaluate', {
+      function: '() => JSON.stringify(localStorage)'
+    }),
+    callMcpTool('mcp__plugin_playwright_playwright__browser_evaluate', {
+      function: '() => JSON.stringify(sessionStorage)'
+    }),
+    callMcpTool('mcp__plugin_playwright_playwright__browser_run_code', {
+      code: \`async (page) => {
+        const cookies = await page.context().cookies();
+        return cookies;
+      }\`
+    }),
+    callMcpTool('mcp__plugin_playwright_playwright__browser_network_requests', {})
+  ]);
+
+  // Extract tokens from captured data
+  const tokens = this.extractTokens(localStorage, sessionStorage, cookies, network);
+
+  // Close browser
+  await callMcpTool('mcp__plugin_playwright_playwright__browser_close', {});
+
+  return tokens;
+}
+
+private extractTokens(localStorage: string, sessionStorage: string, cookies: any[], network: any): TokenData {
+  const data: TokenData = {
+    capturedAt: Date.now(),
+    additionalCookies: {}
+  };
+
+  // Parse localStorage
+  try {
+    const ls = JSON.parse(localStorage);
+    for (const [key, value] of Object.entries(ls)) {
+      if (key.toLowerCase().includes('token')) {
+        data.accessToken = String(value);
+      }
+    }
+  } catch {}
+
+  // Parse cookies
+  const sessionCookies: string[] = [];
+  for (const cookie of cookies) {
+    if (cookie.name.toLowerCase().includes('session') ||
+        cookie.name.toLowerCase().includes('jsessionid')) {
+      sessionCookies.push(\`\${cookie.name}=\${cookie.value}\`);
+    } else {
+      data.additionalCookies![cookie.name] = cookie.value;
+    }
+  }
+
+  if (sessionCookies.length > 0) {
+    data.sessionCookie = sessionCookies.join('; ');
+  }
+
+  return data;
+}
+\`\`\`
+
+**mcp-tool-caller.ts Helper**
+
+Create \`${outputDir}/src/mcp-tool-caller.ts\`:
+
+\`\`\`typescript
+// MCP tool caller for browser auth
+// This allows the MCP to call other MCP tools (like Playwright)
+
+export async function callMcpTool(toolName: string, args: any): Promise<any> {
+  // This is injected by thesun at generation time
+  // It uses the MCP SDK to call other registered MCP tools
+
+  // For now, throw - the generator will inject the actual implementation
+  throw new Error('MCP tool caller not injected yet');
+}
+\`\`\`
+
+The generator will replace this with actual MCP tool calling logic.
 \`\`\`
 
 ### 2.1.1 Cross-Platform Installation (REQUIRED)
@@ -482,54 +589,112 @@ cd ${input.target}-mcp
 npx ${input.target}-mcp
 \`\`\`
 
-### 2.2 Generate MCP Server
-- Create tools for each API endpoint category
-- Implement authentication handler
-- Add comprehensive error handling
-- Use environment variables for ALL config (no hardcoded values)
-- Follow patterns from reference implementations
+### 2.2 Generate MCP Server with Auto-Renewing Browser Auth
 
-**CRITICAL: GRACEFUL STARTUP WITHOUT CREDENTIALS**
-The MCP server MUST start successfully even when credentials are NOT configured.
-This ensures the MCP appears in Claude's \`/mcp\` list immediately after installation.
+**CRITICAL PATTERN: Auto-Renewing Authentication**
 
-Pattern to follow:
+Every MCP server MUST use BrowserAuthManager for authentication.
+This provides automatic token renewal when auth expires - NO manual re-running needed.
+
 \`\`\`typescript
-// At startup - DON'T crash if env vars missing
-const API_URL = process.env.${input.target.toUpperCase()}_API_URL || "";
-const API_KEY = process.env.${input.target.toUpperCase()}_API_KEY || "";
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import { BrowserAuthManager } from "./browser-auth.js";
 
-// In ListToolsHandler - ALWAYS return tools
+const server = new Server({
+  name: "${input.target}-mcp",
+  version: "1.0.0"
+}, {
+  capabilities: { tools: {} }
+});
+
+// Initialize auto-renewing browser auth
+const authManager = new BrowserAuthManager(
+  "${input.target}",
+  process.env.${input.target.toUpperCase()}_BASE_URL || "https://${input.target}.com",
+  process.env.${input.target.toUpperCase()}_LOGIN_URL
+);
+
+// ALWAYS return tools - even without auth
 server.setRequestHandler(ListToolsRequestSchema, async () => {
-  // Return all tools even without credentials
   return { tools: allTools };
 });
 
-// In CallToolHandler - Check credentials when tool is CALLED
+// Auto-retry on auth failure
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  // Only check credentials when a tool is actually invoked
-  if (!API_URL || !API_KEY) {
+  const { name, arguments: args } = request.params;
+
+  // Auto-renewing auth wrapper
+  const makeAuthenticatedRequest = async (retries = 1) => {
+    try {
+      // Get fresh auth (auto-renews if expired)
+      const { headers, cookies } = await authManager.getAuthData();
+
+      // Make API call with auth
+      const response = await fetch(\`\${baseUrl}/api/endpoint\`, {
+        headers: {
+          ...headers,
+          'Cookie': cookies
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(\`HTTP \${response.status}\`);
+      }
+
+      return await response.json();
+
+    } catch (error) {
+      // Handle auth errors - auto-retry after browser re-auth
+      if (retries > 0 && (
+        error.response?.status === 401 ||
+        error.response?.status === 403
+      )) {
+        await authManager.handleAuthError(error);
+        return makeAuthenticatedRequest(retries - 1); // Retry once
+      }
+      throw error;
+    }
+  };
+
+  try {
+    const result = await makeAuthenticatedRequest();
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify(result, null, 2)
+      }]
+    };
+  } catch (error) {
     return {
       content: [{
         type: "text",
         text: JSON.stringify({
-          error: "Authentication required",
-          message: "Configure credentials in ~/.claude/user-mcps.json",
-          required: ["${input.target.toUpperCase()}_API_URL", "${input.target.toUpperCase()}_API_KEY"]
+          error: error.message,
+          hint: "Authentication may be required. The MCP will open a browser automatically on next retry."
         }, null, 2)
       }],
       isError: true
     };
   }
-  // ... actual tool logic
 });
+
+const transport = new StdioServerTransport();
+await server.connect(transport);
 \`\`\`
 
+**HOW IT WORKS:**
+1. **First call**: Auth missing → Opens browser → Captures tokens → Stores in ~/.thesun/credentials → Continues
+2. **Subsequent calls**: Uses stored tokens
+3. **Token expires**: Detects 401/403 → Opens browser → Captures fresh tokens → Retries automatically
+4. **Zero manual intervention**: User just logs in when browser opens, MCP handles everything else
+
 **WHY THIS MATTERS:**
-- Claude only shows MCPs that START successfully
-- If MCP crashes on startup (missing env vars), it won't appear in /mcp
-- User won't know the MCP exists until they manually configure credentials
-- With graceful startup, user sees all available tools and gets clear error when they need to configure auth
+- Users NEVER manually re-run auth commands
+- MCPs work seamlessly across token expiries
+- Browser opens ONLY when needed
+- Tokens stored securely in ~/.thesun/credentials/
 
 ### 2.3 Generate Tests
 - Unit tests for each tool
