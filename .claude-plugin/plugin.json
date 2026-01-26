@@ -4,6 +4,23 @@
   "description": "Autonomous MCP server generation and orchestration platform. Generates, tests, and operates MCP servers with near-zero human involvement.",
   "author": "Tim Schwarz",
   "homepage": "https://github.com/schwarztim/thesun",
+  "commands": [
+    {
+      "name": "sun",
+      "description": "Generate MCP servers autonomously",
+      "path": "commands/sun.md"
+    },
+    {
+      "name": "sun-status",
+      "description": "View thesun build status and system health",
+      "path": "commands/status.md"
+    },
+    {
+      "name": "sun-auth",
+      "description": "Capture authentication from any webapp. Opens browser, you log in, tokens saved. Use: /sun-auth <service> <login-url>",
+      "path": "commands/auth.md"
+    }
+  ],
   "skills": [
     {
       "name": "generate-mcp",
