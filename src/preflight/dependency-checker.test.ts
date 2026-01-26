@@ -43,28 +43,52 @@ describe("DependencyChecker", () => {
     vi.restoreAllMocks();
   });
 
-  describe("checkFirefoxDevTools", () => {
-    it("returns available=true when firefox-devtools-mcp is configured", async () => {
+  describe("checkPlaywrightMcp", () => {
+    it("returns available=true when Playwright plugin is installed", async () => {
+      vi.mocked(existsSync).mockImplementation((path) => {
+        if (
+          typeof path === "string" &&
+          path.includes("external_plugins/playwright")
+        ) {
+          return true;
+        }
+        return false;
+      });
+
+      const result = await checker.checkPlaywrightMcp();
+
+      expect(result.name).toBe("playwright-mcp");
+      expect(result.required).toBe(true);
+      expect(result.available).toBe(true);
+      expect(result.version).toBe("plugin");
+    });
+
+    it("returns available=true when playwright is in user-mcps.json", async () => {
       const mockConfig = {
         mcpServers: {
-          "firefox-devtools": {
-            command: "node",
-            args: ["/path/to/firefox-devtools-mcp/dist/index.js"],
+          playwright: {
+            command: "npx",
+            args: ["@playwright/mcp@latest", "--browser", "firefox"],
           },
         },
       };
 
-      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(existsSync).mockImplementation((path) => {
+        if (typeof path === "string" && path.includes("user-mcps.json")) {
+          return true;
+        }
+        return false;
+      });
       vi.mocked(readFileSync).mockReturnValue(JSON.stringify(mockConfig));
 
-      const result = await checker.checkFirefoxDevTools();
+      const result = await checker.checkPlaywrightMcp();
 
-      expect(result.name).toBe("firefox-devtools-mcp");
+      expect(result.name).toBe("playwright-mcp");
       expect(result.required).toBe(true);
       expect(result.available).toBe(true);
     });
 
-    it("returns available=false with install command when firefox-devtools-mcp is missing", async () => {
+    it("returns available=false with install command when playwright is missing", async () => {
       const mockConfig = {
         mcpServers: {
           "other-mcp": {
@@ -74,33 +98,44 @@ describe("DependencyChecker", () => {
         },
       };
 
-      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(existsSync).mockImplementation((path) => {
+        if (typeof path === "string" && path.includes("user-mcps.json")) {
+          return true;
+        }
+        return false;
+      });
       vi.mocked(readFileSync).mockReturnValue(JSON.stringify(mockConfig));
 
-      const result = await checker.checkFirefoxDevTools();
+      const result = await checker.checkPlaywrightMcp();
 
-      expect(result.name).toBe("firefox-devtools-mcp");
+      expect(result.name).toBe("playwright-mcp");
       expect(result.required).toBe(true);
       expect(result.available).toBe(false);
       expect(result.installCommand).toBeDefined();
-      expect(result.installCommand).toContain("firefox-devtools-mcp");
+      expect(result.installCommand).toContain("playwright");
+      expect(result.installCommand).toContain("firefox");
     });
 
-    it("returns available=false when user-mcps.json does not exist", async () => {
+    it("returns available=false when user-mcps.json does not exist and no plugin", async () => {
       vi.mocked(existsSync).mockReturnValue(false);
 
-      const result = await checker.checkFirefoxDevTools();
+      const result = await checker.checkPlaywrightMcp();
 
-      expect(result.name).toBe("firefox-devtools-mcp");
+      expect(result.name).toBe("playwright-mcp");
       expect(result.available).toBe(false);
       expect(result.error).toContain("not found");
     });
 
     it("handles malformed JSON in user-mcps.json", async () => {
-      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(existsSync).mockImplementation((path) => {
+        if (typeof path === "string" && path.includes("user-mcps.json")) {
+          return true;
+        }
+        return false;
+      });
       vi.mocked(readFileSync).mockReturnValue("{ invalid json }");
 
-      const result = await checker.checkFirefoxDevTools();
+      const result = await checker.checkPlaywrightMcp();
 
       expect(result.available).toBe(false);
       expect(result.error).toBeDefined();
@@ -108,7 +143,7 @@ describe("DependencyChecker", () => {
   });
 
   describe("checkFirefoxBrowser", () => {
-    it("detects Firefox on macOS", async () => {
+    it("detects Firefox on macOS (required for Playwright --browser firefox)", async () => {
       vi.mocked(platform).mockReturnValue("darwin");
       vi.mocked(existsSync).mockImplementation((path) => {
         if (typeof path === "string" && path.includes("Firefox.app")) {
@@ -233,15 +268,22 @@ describe("DependencyChecker", () => {
     it("passes when all dependencies are available", async () => {
       const mockConfig = {
         mcpServers: {
-          "firefox-devtools": {
-            command: "node",
-            args: ["/path/to/firefox-devtools-mcp/dist/index.js"],
+          playwright: {
+            command: "npx",
+            args: ["@playwright/mcp@latest", "--browser", "firefox"],
           },
         },
       };
 
       vi.mocked(platform).mockReturnValue("darwin");
-      vi.mocked(existsSync).mockReturnValue(true);
+      vi.mocked(existsSync).mockImplementation((path) => {
+        if (typeof path === "string") {
+          if (path.includes("user-mcps.json")) return true;
+          if (path.includes("Firefox.app")) return true;
+          if (path.includes(".thesun")) return true;
+        }
+        return false;
+      });
       vi.mocked(readFileSync).mockReturnValue(JSON.stringify(mockConfig));
 
       const result = await checker.runPreflight();
@@ -252,7 +294,7 @@ describe("DependencyChecker", () => {
       expect(result.timestamp).toBeInstanceOf(Date);
     });
 
-    it("fails when firefox-devtools-mcp is missing", async () => {
+    it("fails when playwright-mcp is missing", async () => {
       const mockConfig = {
         mcpServers: {},
       };
@@ -274,7 +316,7 @@ describe("DependencyChecker", () => {
       const result = await checker.runPreflight();
 
       expect(result.passed).toBe(false);
-      expect(result.missingRequired).toContain("firefox-devtools-mcp");
+      expect(result.missingRequired).toContain("playwright-mcp");
     });
 
     it("includes all dependency statuses in result", async () => {
@@ -283,7 +325,7 @@ describe("DependencyChecker", () => {
       const result = await checker.runPreflight();
 
       const dependencyNames = result.dependencies.map((d) => d.name);
-      expect(dependencyNames).toContain("firefox-devtools-mcp");
+      expect(dependencyNames).toContain("playwright-mcp");
       expect(dependencyNames).toContain("firefox-browser");
       expect(dependencyNames).toContain("thesun-directory");
     });
@@ -295,11 +337,11 @@ describe("DependencyChecker", () => {
         passed: false,
         dependencies: [
           {
-            name: "firefox-devtools-mcp",
+            name: "playwright-mcp",
             required: true,
             available: false,
             installCommand:
-              "See https://github.com/anthropics/anthropic-quickstarts for installation",
+              "Install via: npx @playwright/mcp@latest --browser firefox",
           },
           {
             name: "firefox-browser",
@@ -308,14 +350,14 @@ describe("DependencyChecker", () => {
             installCommand: "brew install --cask firefox",
           },
         ],
-        missingRequired: ["firefox-devtools-mcp", "firefox-browser"],
+        missingRequired: ["playwright-mcp", "firefox-browser"],
         timestamp: new Date(),
       };
 
       const message = checker.formatMissingDependencies(result);
 
       expect(message).toContain("Missing required dependencies");
-      expect(message).toContain("firefox-devtools-mcp");
+      expect(message).toContain("playwright-mcp");
       expect(message).toContain("firefox-browser");
       expect(message).toContain("brew install");
     });
@@ -325,7 +367,7 @@ describe("DependencyChecker", () => {
         passed: true,
         dependencies: [
           {
-            name: "firefox-devtools-mcp",
+            name: "playwright-mcp",
             required: true,
             available: true,
           },

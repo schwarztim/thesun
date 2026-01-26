@@ -7,8 +7,18 @@
  * Authentication Flow:
  * 1. Check if API key/token exists (fastest)
  * 2. Try loading from HAR file (if available)
- * 3. Fall back to interactive Playwright login
+ * 3. Fall back to interactive Playwright login (with Firefox)
  * 4. Extract and cache credentials
+ *
+ * PLAYWRIGHT + FIREFOX TOKEN CAPTURE:
+ * Uses Playwright MCP with --browser firefox for maximum token extraction:
+ * - page.evaluate() → Read localStorage, sessionStorage, window variables
+ * - page.context().cookies() → Get all cookies including HttpOnly
+ * - page.route() → Intercept Authorization headers in flight
+ * - browser_network_requests → Capture all network traffic
+ *
+ * This gives us OAuth tokens, session tokens, refresh tokens, and cookies
+ * from ANY webapp - even those without official APIs.
  *
  * Integration with thesun-har MCP:
  * - Uses mcp__thesun-har__upload_har_file

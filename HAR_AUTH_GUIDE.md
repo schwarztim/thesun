@@ -7,9 +7,23 @@ thesun now generates MCPs with **multi-method authentication support** by defaul
 1. **API Keys** (fastest, when available)
 2. **OAuth 2.0** (when supported by the service)
 3. **HAR Files** (for webapps without APIs)
-4. **Interactive Playwright Login** (automatic browser auth)
+4. **Interactive Playwright Login** (automatic browser auth with Firefox)
 
 This ensures MCPs work even when official APIs aren't available or require complex web-based authentication.
+
+## Playwright + Firefox Token Capture
+
+thesun uses **Playwright MCP with `--browser firefox`** for browser-based token extraction. This provides:
+
+| Capability               | Method                     | What You Get                                   |
+| ------------------------ | -------------------------- | ---------------------------------------------- |
+| **localStorage**         | `page.evaluate()`          | Access tokens, refresh tokens, user data       |
+| **sessionStorage**       | `page.evaluate()`          | Session tokens, temporary auth data            |
+| **Cookies**              | `page.context().cookies()` | All cookies including HttpOnly session cookies |
+| **Network Traffic**      | `browser_network_requests` | Authorization headers, API keys in flight      |
+| **Request Interception** | `page.route()`             | Capture tokens as they're sent                 |
+
+**Why Firefox?** No Google dependency. Full privacy. Same capabilities.
 
 ## Why HAR-Based Auth?
 

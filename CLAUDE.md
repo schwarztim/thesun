@@ -47,7 +47,7 @@ npm run mcp          # Start MCP server (stdio)
 ```
 src/
 ├── mcp-server/         # MCP server entry point
-├── preflight/          # DependencyChecker - validates Firefox, firefox-devtools-mcp
+├── preflight/          # DependencyChecker - validates Playwright MCP + Firefox browser
 ├── discovery/          # McpRegistrySearch - searches npm, GitHub, Smithery for existing MCPs
 ├── auth/               # CredentialWizard - browser-based OAuth/API key capture
 ├── patterns/           # PatternEngine - applies known API patterns (Stripe, GitHub, AWS)
@@ -77,7 +77,14 @@ src/
 ### Key Design Patterns
 
 **1. Browser-Enhanced Discovery**
-The system uses `firefox-devtools-mcp` to capture API traffic when OpenAPI specs aren't available. DependencyChecker validates Firefox is installed before starting.
+The system uses **Playwright MCP with `--browser firefox`** to capture API traffic and tokens when OpenAPI specs aren't available. This provides:
+
+- `page.evaluate()` for localStorage/sessionStorage/cookie access
+- `page.context().cookies()` for all cookies including HttpOnly
+- Network interception for Authorization headers
+- Full browser automation without Google dependency
+
+DependencyChecker validates both Playwright MCP and Firefox browser are available before starting.
 
 **2. Module Composition**
 All modules follow singleton pattern with factory functions:

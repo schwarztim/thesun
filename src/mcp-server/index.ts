@@ -12,7 +12,7 @@
  * - Model selection: Opus for planning/security, Sonnet for implementation
  *
  * BROWSER-ENHANCED MODULES:
- * - DependencyChecker: Preflight checks for Firefox and firefox-devtools-mcp
+ * - DependencyChecker: Preflight checks for Playwright MCP + Firefox browser
  * - McpRegistrySearch: Find existing MCPs before generating
  * - CredentialWizard: Browser-based auth capture and token refresh
  * - PatternEngine: Apply known API patterns (Stripe, GitHub, AWS)
@@ -238,8 +238,8 @@ ${input.spec ? `**Spec:** ${input.spec}` : ""}
 ## PHASE 0: PREFLIGHT CHECK
 
 Run DependencyChecker.runPreflight() to verify all dependencies:
-- firefox-devtools-mcp available?
-- Firefox browser available?
+- Playwright MCP available? (with --browser firefox for token capture)
+- Firefox browser available? (required for Playwright Firefox mode)
 - ~/.thesun/ ready?
 
 **Decision:**

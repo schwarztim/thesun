@@ -1,6 +1,12 @@
 /**
  * Preflight dependency checker for browser-enhanced MCP generation.
  * Verifies all required dependencies are available before starting generation.
+ *
+ * Uses Playwright MCP with Firefox for browser automation - giving us:
+ * - Full JS evaluation (localStorage, sessionStorage, cookies)
+ * - Network request interception
+ * - Token capture from any webapp
+ * - No Google/Chrome dependency
  */
 
 import { existsSync, mkdirSync, readFileSync } from "fs";
@@ -11,6 +17,7 @@ import type { DependencyStatus, PreflightCheckResult } from "../types/index.js";
 
 /**
  * Platform-specific Firefox browser paths
+ * Required for Playwright's --browser firefox option
  */
 const FIREFOX_PATHS: Record<string, string[]> = {
   darwin: [
@@ -61,7 +68,7 @@ export class DependencyChecker {
     logger.info("Running preflight dependency checks");
 
     const checks = await Promise.all([
-      this.checkFirefoxDevTools(),
+      this.checkPlaywrightMcp(),
       this.checkFirefoxBrowser(),
       this.checkThesunDirectory(),
     ]);
@@ -87,19 +94,47 @@ export class DependencyChecker {
   }
 
   /**
-   * Checks if firefox-devtools-mcp is configured in ~/.claude/user-mcps.json
+   * Checks if Playwright MCP is available (via Claude plugin or user-mcps.json)
+   *
+   * Playwright MCP with --browser firefox gives us:
+   * - page.evaluate() for localStorage/sessionStorage/cookies
+   * - page.context().cookies() for all cookies including HttpOnly
+   * - Network interception for token capture
+   * - Full browser automation
    */
-  async checkFirefoxDevTools(): Promise<DependencyStatus> {
-    const name = "firefox-devtools-mcp";
+  async checkPlaywrightMcp(): Promise<DependencyStatus> {
+    const name = "playwright-mcp";
 
     try {
+      // First check if Playwright plugin is installed (preferred)
+      const pluginPath = join(
+        homedir(),
+        ".claude",
+        "plugins",
+        "marketplaces",
+        "claude-plugins-official",
+        "external_plugins",
+        "playwright",
+      );
+
+      if (existsSync(pluginPath)) {
+        logger.debug("Playwright plugin found", { path: pluginPath });
+        return {
+          name,
+          required: true,
+          available: true,
+          version: "plugin",
+        };
+      }
+
+      // Fall back to checking user-mcps.json
       if (!existsSync(this.userMcpsPath)) {
         return {
           name,
           required: true,
           available: false,
           error: `Config file not found: ${this.userMcpsPath}`,
-          installCommand: this.getFirefoxDevToolsInstallCommand(),
+          installCommand: this.getPlaywrightInstallCommand(),
         };
       }
 
@@ -114,21 +149,21 @@ export class DependencyChecker {
           required: true,
           available: false,
           error: `Failed to parse ${this.userMcpsPath}: Invalid JSON`,
-          installCommand: this.getFirefoxDevToolsInstallCommand(),
+          installCommand: this.getPlaywrightInstallCommand(),
         };
       }
 
-      // Check for firefox-devtools in any form
+      // Check for playwright in any form
       const mcpServers = config.mcpServers || {};
-      const hasFirefoxDevTools = Object.keys(mcpServers).some(
+      const hasPlaywright = Object.keys(mcpServers).some(
         (key) =>
-          key.includes("firefox-devtools") ||
-          key.includes("firefox_devtools") ||
-          key.includes("firefoxdevtools"),
+          key.includes("playwright") ||
+          key.includes("Playwright") ||
+          key.includes("PLAYWRIGHT"),
       );
 
-      if (hasFirefoxDevTools) {
-        logger.debug("firefox-devtools-mcp found in user-mcps.json");
+      if (hasPlaywright) {
+        logger.debug("Playwright MCP found in user-mcps.json");
         return {
           name,
           required: true,
@@ -140,7 +175,7 @@ export class DependencyChecker {
         name,
         required: true,
         available: false,
-        installCommand: this.getFirefoxDevToolsInstallCommand(),
+        installCommand: this.getPlaywrightInstallCommand(),
       };
     } catch (error) {
       const errorMessage =
@@ -150,13 +185,15 @@ export class DependencyChecker {
         required: true,
         available: false,
         error: errorMessage,
-        installCommand: this.getFirefoxDevToolsInstallCommand(),
+        installCommand: this.getPlaywrightInstallCommand(),
       };
     }
   }
 
   /**
-   * Checks if Firefox browser is installed on the system
+   * Checks if Firefox browser is installed on the system.
+   * Required for Playwright's --browser firefox option.
+   * This ensures we use Mozilla's freedom-respecting browser instead of Chrome.
    */
   async checkFirefoxBrowser(): Promise<DependencyStatus> {
     const name = "firefox-browser";
@@ -258,10 +295,18 @@ export class DependencyChecker {
   }
 
   /**
-   * Returns the install command for firefox-devtools-mcp
+   * Returns the install command for Playwright MCP
    */
-  private getFirefoxDevToolsInstallCommand(): string {
-    return "See https://github.com/anthropics/anthropic-quickstarts/tree/main/mcp-servers/firefox-devtools-mcp for installation instructions";
+  private getPlaywrightInstallCommand(): string {
+    return `Install Playwright plugin via Claude Code settings, or add to ~/.claude/user-mcps.json:
+{
+  "mcpServers": {
+    "playwright": {
+      "command": "npx",
+      "args": ["@playwright/mcp@latest", "--browser", "firefox"]
+    }
+  }
+}`;
   }
 
   /**

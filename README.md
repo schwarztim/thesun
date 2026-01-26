@@ -84,7 +84,7 @@ stripe-mcp v1.0.0
 
 ### Browser-Based Discovery
 
-Reverse-engineer undocumented APIs by capturing network traffic via `firefox-devtools-mcp`.
+Reverse-engineer undocumented APIs by capturing network traffic and tokens via **Playwright MCP + Firefox**. Full localStorage, sessionStorage, and cookie access.
 
 </td>
 <td width="50%">
@@ -134,7 +134,8 @@ flowchart TB
 
     subgraph Preflight["🔍 Preflight Checks"]
         DEP["Dependency Checker"]
-        FIREFOX["Firefox Detection"]
+        PW["Playwright MCP"]
+        FIREFOX["Firefox Browser"]
         DIR["Directory Setup"]
     end
 
@@ -191,7 +192,7 @@ graph LR
     end
 
     subgraph Preflight["Preflight"]
-        DC["dependency-checker.ts<br/>Firefox, MCP Detection"]
+        DC["dependency-checker.ts<br/>Playwright MCP + Firefox"]
     end
 
     subgraph Discovery["Discovery"]
@@ -241,7 +242,7 @@ sequenceDiagram
     participant User
     participant thesun
     participant Registry as MCP Registry
-    participant Browser as Firefox DevTools
+    participant Browser as Playwright Firefox
     participant API as Target API
     participant Validator
 
@@ -527,8 +528,8 @@ flowchart TB
 ### Prerequisites
 
 - Node.js 18+
-- Firefox browser (for browser-based discovery)
-- `firefox-devtools-mcp` installed
+- Firefox browser (for browser-based token capture)
+- Playwright MCP (Claude plugin or manual install with `--browser firefox`)
 
 ### Installation
 

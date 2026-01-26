@@ -249,8 +249,8 @@ Execute the complete pipeline below WITHOUT stopping for human input.
 ## PHASE 0: PREFLIGHT CHECK
 
 Run DependencyChecker.runPreflight() to verify all dependencies:
-- firefox-devtools-mcp available?
-- Firefox browser available?
+- Playwright MCP available? (with --browser firefox for token capture)
+- Firefox browser available? (required for Playwright Firefox mode)
 - ~/.thesun/ ready?
 
 **Decision:**
