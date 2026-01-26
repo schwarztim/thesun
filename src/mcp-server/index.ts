@@ -48,16 +48,18 @@ const MCP_OUTPUT_BASE = join(homedir(), "Scripts", "mcp-servers");
 const TOOLS: Tool[] = [
   {
     name: "thesun",
-    description: `Autonomous MCP server generator AND fixer. Creates or fixes MCP servers for any API.
+    description: `Autonomous MCP server generator for ANY API or webapp. Creates, fixes, or reverse-engineers MCP servers.
 
-**TWO MODES:**
+**THREE MODES:**
 
-1. **CREATE MODE** (default): "use thesun for Tesla" - Creates new MCP from scratch
-2. **FIX MODE**: "use thesun to fix /path/to/mcp" - Fixes existing MCP code
+1. **CREATE MODE** (default): "use thesun for Tesla" - Creates MCP from documented APIs
+2. **FIX MODE**: "use thesun to fix /path/to/mcp" - Fixes existing broken MCP code
+3. **INTERACTIVE MODE**: "use thesun for myapp with site url" - Reverse-engineers undocumented APIs via browser capture
 
 thesun handles EVERYTHING autonomously:
 - Researches the API (web search, docs, OpenAPI specs)
 - Creates OR fixes MCP server code
+- Captures tokens from browser for sites without APIs (Playwright + Firefox)
 - Writes comprehensive tests
 - Runs security scans
 - Registers globally in ~/.claude/user-mcps.json
@@ -68,7 +70,12 @@ thesun handles EVERYTHING autonomously:
 
 **FIX Examples:**
 - thesun({ target: "atlassian", fix: "/Users/tim/Scripts/AtlassianPlugin" }) - Fix existing plugin
-- thesun({ target: "jira", fix: "." }) - Fix MCP in current directory`,
+- thesun({ target: "jira", fix: "." }) - Fix MCP in current directory
+
+**INTERACTIVE Examples (for sites WITHOUT public APIs):**
+- thesun({ target: "myapp", siteUrl: "https://app.example.com" }) - Captures API from browser
+- thesun({ target: "intranet", siteUrl: "https://intranet.corp.com", loginUrl: "/sso/login" }) - With SSO
+- thesun({ target: "admin", siteUrl: "https://admin.tool.com", actions: ["list users", "create report"] }) - With specific actions`,
     inputSchema: {
       type: "object",
       properties: {
@@ -101,6 +108,27 @@ thesun handles EVERYTHING autonomously:
           description:
             "Run batch generation in parallel (default: true). Each target gets its own isolated bob instance.",
         },
+        siteUrl: {
+          type: "string",
+          description:
+            "Site URL for INTERACTIVE mode - reverse-engineer APIs by capturing browser traffic. thesun will open the site, let you log in, capture network requests, and generate an MCP from the observed API calls.",
+        },
+        loginUrl: {
+          type: "string",
+          description:
+            "Login URL path (e.g., '/login' or '/auth/signin'). Used with siteUrl for interactive mode.",
+        },
+        actions: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            'Actions to perform after login (e.g., ["view profile", "list orders"]). Used to capture specific API endpoints.',
+        },
+        apiDocsUrl: {
+          type: "string",
+          description:
+            "If API docs exist at a known URL, provide it to skip browser capture and use documented endpoints.",
+        },
       },
       required: ["target"],
     },
@@ -114,6 +142,11 @@ const TheSunInput = z.object({
   output: z.string().optional(),
   spec: z.string().optional(),
   parallel: z.boolean().optional().default(true),
+  // INTERACTIVE mode parameters
+  siteUrl: z.string().url().optional(),
+  loginUrl: z.string().optional(),
+  actions: z.array(z.string()).optional(),
+  apiDocsUrl: z.string().url().optional(),
 });
 
 class TheSunMcpServer {
@@ -193,6 +226,25 @@ class TheSunMcpServer {
         fixPath,
         mcpConfigPath,
         input.spec,
+      );
+    }
+
+    // INTERACTIVE MODE: Reverse-engineer APIs via browser capture
+    if (input.siteUrl) {
+      const outputDir = input.output
+        ? input.output.startsWith("/")
+          ? input.output
+          : join(MCP_OUTPUT_BASE, input.output)
+        : join(MCP_OUTPUT_BASE, `${allTargets[0]}-mcp`);
+
+      return this.handleInteractiveMode(
+        allTargets[0],
+        input.siteUrl,
+        outputDir,
+        mcpConfigPath,
+        input.loginUrl,
+        input.actions,
+        input.apiDocsUrl,
       );
     }
 
@@ -295,10 +347,85 @@ PatternEngine.matchKnownPattern("${target}")
 ## PHASE 3: AUTHENTICATION
 
 CredentialWizard.loadCredentials("${target}")
-- Existing credentials?
-  - Yes + valid -> Use
-  - Yes + expired -> Refresh
-  - No -> Browser auth flow
+
+### 3.1 Check Existing Credentials
+
+Check for credentials in this order:
+1. Environment variable: \`${input.target.toUpperCase().replace(/-/g, "_")}_API_KEY\`
+2. Extracted token: \`${input.target.toUpperCase().replace(/-/g, "_")}_EXTRACTED_TOKEN\`
+3. HAR file: \`~/.thesun/credentials/${input.target}.har\`
+4. Credential file: \`~/.thesun/credentials/${input.target}.env\`
+
+**If credentials found:**
+- Valid? -> Use them
+- Expired? -> Try refresh, else capture new
+
+### 3.2 Browser Auth Flow (If No Credentials)
+
+If no credentials exist, use Playwright to capture tokens:
+
+**Step 1: Find the login URL**
+\`\`\`
+WebSearch: "${input.target} login URL"
+WebSearch: "${input.target} authentication page"
+\`\`\`
+
+**Step 2: Open Browser (Playwright + Firefox)**
+\`\`\`
+Call: mcp__plugin_playwright_playwright__browser_navigate
+Args: { "url": "https://login.${input.target.toLowerCase()}.com" }
+\`\`\`
+
+**Step 3: Message User**
+\`\`\`
+🔐 Browser opened for ${input.target} authentication.
+
+Please log in manually (handles CAPTCHA, 2FA, SSO).
+Say "done" when you've completed login.
+
+I'll capture your session tokens automatically.
+\`\`\`
+
+**Step 4: After Login - Extract Tokens**
+
+From localStorage:
+\`\`\`
+Call: mcp__plugin_playwright_playwright__browser_evaluate
+Args: {
+  "expression": "JSON.stringify(Object.fromEntries(Object.entries(localStorage).filter(([k]) => k.toLowerCase().includes('token') || k.toLowerCase().includes('auth') || k.toLowerCase().includes('session'))))"
+}
+\`\`\`
+
+From sessionStorage:
+\`\`\`
+Call: mcp__plugin_playwright_playwright__browser_evaluate
+Args: {
+  "expression": "JSON.stringify(Object.fromEntries(Object.entries(sessionStorage).filter(([k]) => k.toLowerCase().includes('token') || k.toLowerCase().includes('auth'))))"
+}
+\`\`\`
+
+From network requests (captures Authorization headers):
+\`\`\`
+Call: mcp__plugin_playwright_playwright__browser_network_requests
+\`\`\`
+
+**Step 5: Store Extracted Credentials**
+Save to \`~/.thesun/credentials/${input.target}.env\`:
+\`\`\`
+${input.target.toUpperCase().replace(/-/g, "_")}_EXTRACTED_TOKEN=[captured token]
+${input.target.toUpperCase().replace(/-/g, "_")}_AUTH_TYPE=[Bearer/Cookie/ApiKey]
+${input.target.toUpperCase().replace(/-/g, "_")}_EXPIRES_AT=[timestamp if detected]
+\`\`\`
+
+### 3.3 Authentication Type Detection
+
+From captured data, determine auth type:
+| Pattern | Auth Type | Usage |
+|---------|-----------|-------|
+| \`Authorization: Bearer xxx\` | OAuth2/JWT | Use as Bearer token |
+| \`Authorization: ApiKey xxx\` | API Key | Use as API key |
+| \`Cookie: session=xxx\` | Session Cookie | Pass cookies with requests |
+| \`x-api-key: xxx\` | API Key Header | Use custom header |
 
 ---
 
@@ -1307,6 +1434,534 @@ All ${targets.length} MCPs must be:
 ---
 
 **BEGIN BATCH EXECUTION NOW. Spawn ${targets.length} parallel Task agents.**
+`;
+
+    return {
+      content: [{ type: "text", text: instructions }],
+    };
+  }
+
+  private async handleInteractiveMode(
+    target: string,
+    siteUrl: string,
+    outputDir: string,
+    mcpConfigPath: string,
+    loginUrl?: string,
+    actions?: string[],
+    apiDocsUrl?: string,
+  ): Promise<{ content: Array<{ type: string; text: string }> }> {
+    const envPrefix = target.toUpperCase().replace(/-/g, "_");
+    const actionsList = actions?.length
+      ? actions.map((a, i) => `${i + 1}. ${a}`).join("\n")
+      : "1. Browse main features\n2. Navigate key workflows\n3. Trigger API-heavy operations";
+
+    const instructions = `
+# thesun: INTERACTIVE MODE for "${target}"
+
+You are now operating as **thesun** in INTERACTIVE MODE - reverse-engineering APIs from a webapp by capturing browser traffic.
+
+**This mode is for sites WITHOUT official API documentation** - we'll watch what the site does and build an MCP from observed requests.
+
+**Target:** ${target}
+**Site URL:** ${siteUrl}
+${loginUrl ? `**Login URL:** ${loginUrl}` : ""}
+**Output:** ${outputDir}
+**MCP Config:** ${mcpConfigPath}
+${apiDocsUrl ? `**API Docs:** ${apiDocsUrl} (will use docs instead of browser capture)` : ""}
+
+---
+
+## PHASE 0: PREFLIGHT CHECK
+
+### 0.1 Verify Playwright MCP is available
+Check for Playwright MCP plugin or configuration. If not available:
+\`\`\`
+The Playwright MCP is required for interactive mode.
+
+Install via Claude Code settings, or add to ~/.claude/user-mcps.json:
+{
+  "mcpServers": {
+    "playwright": {
+      "command": "npx",
+      "args": ["@playwright/mcp@latest", "--browser", "firefox"]
+    }
+  }
+}
+\`\`\`
+
+### 0.2 Verify Firefox Browser
+Playwright Firefox mode requires Firefox. If using remote browsers, ensure Firefox is available.
+
+---
+
+${
+  apiDocsUrl
+    ? `
+## PHASE 1: API DOCS MODE (Skip Browser Capture)
+
+API documentation URL provided: ${apiDocsUrl}
+
+1. **Fetch and parse the API docs**
+2. **Extract endpoints, auth, and schemas**
+3. **Skip to PHASE 4: GENERATE MCP**
+
+---
+`
+    : `
+## PHASE 1: CLARIFYING QUESTIONS (If Needed)
+
+Before starting browser capture, consider asking:
+
+1. **Login Method**: How do you log in? (SSO, username/password, OAuth, MFA?)
+2. **Key Actions**: What main tasks do you want the MCP to support?
+3. **Admin Access**: Do you have admin/elevated permissions to see all features?
+
+If the user provided sufficient context already, proceed to PHASE 2.
+
+---
+
+## PHASE 2: BROWSER LAUNCH & LOGIN
+
+### 2.1 Launch Firefox via Playwright
+
+**CRITICAL**: Use Playwright MCP with Firefox for full token capture capabilities.
+
+\`\`\`
+Call: mcp__plugin_playwright_playwright__browser_navigate
+Args: { "url": "${siteUrl}${loginUrl || ""}" }
+\`\`\`
+
+This opens Firefox and navigates to the login page.
+
+### 2.2 Manual Login (User Action Required)
+
+**IMPORTANT MESSAGE TO USER:**
+\`\`\`
+🔐 BROWSER OPENED - Please complete login manually
+
+1. A Firefox browser window has opened
+2. Log in to ${target} normally (handle CAPTCHA, 2FA as needed)
+3. After login, say "done" or "logged in" here
+4. I'll then capture your session tokens
+
+This is the ONLY step requiring your action. Everything else is automatic.
+\`\`\`
+
+**Wait for user confirmation before proceeding.**
+
+### 2.3 Capture Network Traffic
+
+After login confirmed, start monitoring network requests:
+
+\`\`\`
+Call: mcp__plugin_playwright_playwright__browser_network_requests
+Args: { }
+\`\`\`
+
+This captures all XHR/fetch requests being made.
+
+---
+
+## PHASE 3: TOKEN EXTRACTION (The Magic)
+
+### 3.1 Extract localStorage Tokens
+
+Use Playwright's browser_evaluate to read localStorage:
+
+\`\`\`
+Call: mcp__plugin_playwright_playwright__browser_evaluate
+Args: {
+  "expression": "JSON.stringify(Object.fromEntries(Object.entries(localStorage).filter(([k]) => k.toLowerCase().includes('token') || k.toLowerCase().includes('auth') || k.toLowerCase().includes('session') || k.toLowerCase().includes('jwt') || k.toLowerCase().includes('access') || k.toLowerCase().includes('refresh') || k.toLowerCase().includes('id_token') || k.toLowerCase().includes('user'))))"
+}
+\`\`\`
+
+**Parse the result** - look for:
+- \`access_token\` / \`accessToken\`
+- \`refresh_token\` / \`refreshToken\`
+- \`id_token\` / \`idToken\`
+- \`session_token\` / \`sessionToken\`
+- \`jwt\` / \`JWT\`
+
+### 3.2 Extract sessionStorage Tokens
+
+\`\`\`
+Call: mcp__plugin_playwright_playwright__browser_evaluate
+Args: {
+  "expression": "JSON.stringify(Object.fromEntries(Object.entries(sessionStorage).filter(([k]) => k.toLowerCase().includes('token') || k.toLowerCase().includes('auth') || k.toLowerCase().includes('session') || k.toLowerCase().includes('jwt') || k.toLowerCase().includes('access'))))"
+}
+\`\`\`
+
+### 3.3 Extract Cookies (Including HttpOnly)
+
+\`\`\`
+Call: mcp__plugin_playwright_playwright__browser_evaluate
+Args: {
+  "expression": "document.cookie"
+}
+\`\`\`
+
+Note: HttpOnly cookies won't appear here but ARE captured in network requests.
+
+### 3.4 Extract from Window Object
+
+Some sites store tokens on the window object:
+
+\`\`\`
+Call: mcp__plugin_playwright_playwright__browser_evaluate
+Args: {
+  "expression": "JSON.stringify({__INITIAL_STATE__: window.__INITIAL_STATE__?.auth, __NUXT__: window.__NUXT__?.auth, __REDUX_STATE__: window.__REDUX_STATE__?.auth, _token: window._token, token: window.token, auth: window.auth})"
+}
+\`\`\`
+
+### 3.5 Analyze Captured Network Traffic
+
+Review network_requests output for:
+1. **Authorization headers**: \`Bearer\`, \`ApiKey\`, etc.
+2. **Cookie headers**: Session cookies
+3. **API base URLs**: The endpoints being called
+4. **Request/response patterns**: Data shapes
+
+**Document all auth patterns found:**
+- Auth type: Bearer / Cookie / API Key / Custom
+- Token location: localStorage / sessionStorage / Cookie / Header
+- Token key name: e.g., \`access_token\`
+- Refresh mechanism: If refresh token exists
+
+---
+
+## PHASE 3.5: USER ACTION CAPTURE
+
+### 3.5.1 Perform Key Actions
+
+**MESSAGE TO USER:**
+\`\`\`
+📱 Now let's capture the API calls for key features.
+
+Please perform these actions in the browser:
+${actionsList}
+
+After each action, I'll capture the API endpoints being called.
+Say "done" after completing each action.
+\`\`\`
+
+### 3.5.2 After Each Action
+
+Capture the network traffic:
+\`\`\`
+Call: mcp__plugin_playwright_playwright__browser_network_requests
+\`\`\`
+
+**Document for each action:**
+- Endpoint URL and method (GET, POST, PUT, DELETE)
+- Request headers (especially Authorization)
+- Request body shape
+- Response body shape
+- Status codes
+
+---
+
+## PHASE 4: USER APPROVAL CHECKPOINT
+
+### 4.1 Present Findings
+
+Before generating the MCP, show the user what was captured:
+
+\`\`\`
+## Captured API Information for ${target}
+
+### Authentication
+- **Type**: [Bearer/Cookie/API Key]
+- **Token Location**: [localStorage/sessionStorage/Cookie]
+- **Token Key**: [key name]
+- **Refresh Available**: [Yes/No]
+
+### Endpoints Captured
+| # | Method | Endpoint | Purpose |
+|---|--------|----------|---------|
+| 1 | GET | /api/users/me | Get current user |
+| 2 | GET | /api/items | List items |
+| ... | ... | ... | ... |
+
+### Token Validity
+- Access Token: [extracted, X characters]
+- Refresh Token: [extracted/not found]
+- Expiry: [if detectable]
+
+---
+
+**Shall I proceed to generate an MCP from these endpoints?**
+\`\`\`
+
+### 4.2 Wait for Approval
+
+Only proceed after user confirms they want to generate the MCP.
+
+---
+`
+}
+
+## PHASE 5: GENERATE MCP
+
+### 5.1 Create Project Structure
+
+\`\`\`bash
+mkdir -p "${outputDir}"
+\`\`\`
+
+\`\`\`
+${outputDir}/
+├── src/
+│   ├── index.ts          # MCP server entry point
+│   ├── auth.ts           # Auto-refresh authentication
+│   └── types.ts          # TypeScript types from observed responses
+├── scripts/
+│   ├── install.sh
+│   └── install.ps1
+├── package.json
+├── tsconfig.json
+├── .env.example
+└── README.md
+\`\`\`
+
+### 5.2 Generate Auth Module (CRITICAL)
+
+**The auth module must support automatic token refresh:**
+
+\`\`\`typescript
+// src/auth.ts - Auto-refresh authentication from browser capture
+
+import * as fs from 'fs';
+import * as path from 'path';
+
+interface TokenData {
+  accessToken: string;
+  refreshToken?: string;
+  expiresAt?: number;
+  tokenType: string;
+}
+
+class AuthManager {
+  private tokenData: TokenData | null = null;
+  private harFilePath: string;
+
+  constructor() {
+    // Check for HAR file path (for manual capture)
+    this.harFilePath = process.env.${envPrefix}_HAR_FILE_PATH || '';
+
+    // Check for pre-extracted tokens
+    const extractedToken = process.env.${envPrefix}_EXTRACTED_TOKEN;
+    const extractedCookies = process.env.${envPrefix}_EXTRACTED_COOKIES;
+
+    if (extractedToken) {
+      this.tokenData = {
+        accessToken: extractedToken,
+        tokenType: 'Bearer',
+      };
+    }
+  }
+
+  async getAuthHeaders(): Promise<Record<string, string>> {
+    if (!this.tokenData && this.harFilePath) {
+      await this.extractFromHAR();
+    }
+
+    if (!this.tokenData) {
+      throw new Error(
+        'No authentication configured. Set ${envPrefix}_EXTRACTED_TOKEN or ${envPrefix}_HAR_FILE_PATH'
+      );
+    }
+
+    // Check if token needs refresh
+    if (this.tokenData.expiresAt && Date.now() > this.tokenData.expiresAt - 60000) {
+      await this.refreshToken();
+    }
+
+    return {
+      'Authorization': \`\${this.tokenData.tokenType} \${this.tokenData.accessToken}\`,
+    };
+  }
+
+  private async extractFromHAR(): Promise<void> {
+    if (!this.harFilePath || !fs.existsSync(this.harFilePath)) {
+      return;
+    }
+
+    const harContent = JSON.parse(fs.readFileSync(this.harFilePath, 'utf-8'));
+    // Extract auth from HAR entries...
+  }
+
+  private async refreshToken(): Promise<void> {
+    if (!this.tokenData?.refreshToken) {
+      throw new Error('Token expired and no refresh token available');
+    }
+    // Implement refresh logic based on observed patterns
+  }
+}
+
+export const authManager = new AuthManager();
+\`\`\`
+
+### 5.3 Generate MCP Tools
+
+For each captured endpoint, generate a tool:
+
+\`\`\`typescript
+// Example tool from captured endpoint
+{
+  name: "${target}_get_user",
+  description: "Get current user information",
+  inputSchema: {
+    type: "object",
+    properties: {},
+    required: []
+  }
+}
+\`\`\`
+
+### 5.4 Graceful Startup (CRITICAL)
+
+The MCP MUST start even without credentials configured:
+
+\`\`\`typescript
+// Don't crash at startup
+const BASE_URL = process.env.${envPrefix}_BASE_URL || "${siteUrl}";
+
+// Tools always visible
+server.setRequestHandler(ListToolsRequestSchema, async () => {
+  return { tools: allTools };
+});
+
+// Check auth only when tool is called
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  try {
+    const headers = await authManager.getAuthHeaders();
+    // ... execute request
+  } catch (error) {
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify({
+          error: "Authentication required",
+          message: error.message,
+          setup: [
+            "Option 1: Set ${envPrefix}_EXTRACTED_TOKEN with captured token",
+            "Option 2: Set ${envPrefix}_HAR_FILE_PATH to HAR file",
+            "Option 3: Run interactive capture again"
+          ]
+        }, null, 2)
+      }],
+      isError: true
+    };
+  }
+});
+\`\`\`
+
+---
+
+## PHASE 6: VALIDATION
+
+### 6.1 Build
+\`\`\`bash
+cd "${outputDir}" && npm install && npm run build
+\`\`\`
+
+### 6.2 Test with Captured Token
+
+If tokens were extracted, test an endpoint:
+- Make a test request using the captured auth
+- Verify response matches expected shape
+
+### 6.3 Security Check
+- Ensure tokens are ONLY read from env vars
+- No tokens logged or exposed
+- HAR file path is gitignored
+
+---
+
+## PHASE 7: REGISTER & SAVE CREDENTIALS
+
+### 7.1 Save Extracted Tokens
+
+Create credential storage:
+\`\`\`bash
+mkdir -p ~/.thesun/credentials
+\`\`\`
+
+**Write ${target}.env:**
+\`\`\`bash
+# Auto-extracted from browser session
+${envPrefix}_BASE_URL=${siteUrl}
+${envPrefix}_EXTRACTED_TOKEN=[captured token]
+${envPrefix}_EXTRACTED_COOKIES=[captured cookies JSON]
+${envPrefix}_AUTH_TYPE=[Bearer/Cookie/ApiKey]
+\`\`\`
+
+### 7.2 Register MCP
+
+Add to ${mcpConfigPath}:
+\`\`\`json
+{
+  "mcpServers": {
+    "${target}": {
+      "command": "node",
+      "args": ["${outputDir}/dist/index.js"],
+      "env": {
+        "${envPrefix}_BASE_URL": "${siteUrl}",
+        "${envPrefix}_EXTRACTED_TOKEN": "[captured token]"
+      }
+    }
+  }
+}
+\`\`\`
+
+---
+
+## PHASE 8: FINAL REPORT
+
+\`\`\`
+## ${target} MCP - Interactive Generation Complete
+
+### Summary
+- **Mode**: Interactive (browser capture)
+- **Site**: ${siteUrl}
+- **Endpoints Captured**: [count]
+- **Auth Type**: [Bearer/Cookie/etc]
+
+### Authentication
+- Token extracted: ✅
+- Refresh token: [✅/❌]
+- Token location: [localStorage/sessionStorage/Cookie]
+
+### Files Created
+- ${outputDir}/src/index.ts
+- ${outputDir}/src/auth.ts
+- ${outputDir}/.env.example
+
+### Token Refresh
+${
+  apiDocsUrl
+    ? "Using documented API - check docs for token refresh endpoint"
+    : `
+**IMPORTANT**: Tokens captured from browser sessions expire!
+
+When tokens expire, re-run interactive capture:
+\`\`\`
+thesun({ target: "${target}", siteUrl: "${siteUrl}" })
+\`\`\`
+
+Or manually update ~/.thesun/credentials/${target}.env
+`
+}
+
+### Next Steps
+1. Restart Claude to load the new MCP
+2. Test: "List ${target} tools"
+3. If auth fails, re-run interactive capture
+\`\`\`
+
+---
+
+**BEGIN INTERACTIVE MODE NOW. Start with Phase 0: Preflight Check.**
 `;
 
     return {
