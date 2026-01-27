@@ -25,7 +25,7 @@ export {
   type IdentityProvider,
   type TokenValidationResult,
   type ToolPermission,
-} from './auth-manager.js';
+} from "./auth-manager.js";
 
 // API Key Authentication (common reality)
 export {
@@ -37,7 +37,7 @@ export {
   generateApiKeyEnvExample,
   type ApiKeyConfig,
   type ApiKeyPlacement,
-} from './api-key-auth.js';
+} from "./api-key-auth.js";
 
 // HAR-based Authentication (for webapps without APIs)
 export {
@@ -47,7 +47,7 @@ export {
   generateHARAuthEnvDocs,
   type HARAuthConfig,
   type ExtractedAuth,
-} from './har-auth.js';
+} from "./har-auth.js";
 
 // Unified Authentication Generator (supports all methods with fallback)
 export {
@@ -56,7 +56,7 @@ export {
   generateUnifiedAuthReadme,
   type AuthMethod,
   type UnifiedAuthConfig,
-} from './unified-auth-generator.js';
+} from "./unified-auth-generator.js";
 
 // Security Hardening (applies to all auth methods)
 export {
@@ -66,4 +66,15 @@ export {
   generateSecurityMiddleware,
   generateSecurityChecklist,
   type SecurityConfig,
-} from './hardening.js';
+} from "./hardening.js";
+
+// Azure AD SSO Authentication (for enterprise Microsoft/Entra ID)
+export {
+  AZURE_AD_SSO_AUTH,
+  AzureAdSsoConfigSchema,
+  generateRobustAuthModule,
+  generateSetupWizardModule,
+  generatePackageJsonAdditions,
+  generateAzureAdSsoReadme,
+  type AzureAdSsoConfig,
+} from "./azure-ad-sso-auth.js";

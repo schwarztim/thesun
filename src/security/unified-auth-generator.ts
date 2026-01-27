@@ -15,6 +15,12 @@ import {
   generateHARAuthCodeSnippet,
   generateHARAuthEnvDocs,
 } from "./har-auth.js";
+import {
+  generateRobustAuthModule,
+  generateSetupWizardModule,
+  generateAzureAdSsoReadme,
+  type AzureAdSsoConfig,
+} from "./azure-ad-sso-auth.js";
 import type { OAuthConfig } from "./auth-manager.js";
 import type { ApiKeyConfig } from "./api-key-auth.js";
 
@@ -24,6 +30,7 @@ export type AuthMethod =
   | "bearer"
   | "basic"
   | "har"
+  | "azure_ad_sso"
   | "auto";
 
 export interface UnifiedAuthConfig {
@@ -32,6 +39,7 @@ export interface UnifiedAuthConfig {
   enableHARFallback?: boolean;
   oauthConfig?: OAuthConfig;
   apiKeyConfig?: ApiKeyConfig;
+  azureAdSsoConfig?: AzureAdSsoConfig;
 }
 
 /**
@@ -43,6 +51,11 @@ export function generateUnifiedAuthCode(config: UnifiedAuthConfig): string {
 
   // Always include HAR auth as fallback
   const harAuthCode = generateHARAuthCodeSnippet(toolName);
+
+  // Azure AD SSO authentication (enterprise Microsoft/Entra ID)
+  if (primaryMethod === "azure_ad_sso" && config.azureAdSsoConfig) {
+    return generateRobustAuthModule(config.azureAdSsoConfig);
+  }
 
   if (primaryMethod === "har" || primaryMethod === "auto") {
     // HAR-first authentication (for webapps without APIs)
@@ -198,8 +211,36 @@ async function getPrimaryAuth(): Promise<Record<string, string> | null> {
  * Generate comprehensive .env.example with all auth methods
  */
 export function generateUnifiedEnvExample(config: UnifiedAuthConfig): string {
-  const { toolName, enableHARFallback = true } = config;
+  const { toolName, enableHARFallback = true, azureAdSsoConfig } = config;
   const envPrefix = toolName.toUpperCase().replace(/-/g, "_");
+
+  // If Azure AD SSO is configured, use minimal env since setup wizard handles creds
+  if (azureAdSsoConfig) {
+    return `# ${toolName.toUpperCase()} MCP Configuration
+# Generated: ${new Date().toISOString()}
+
+# ===========================================
+# INSTANCE CONFIGURATION
+# ===========================================
+
+# Your ${toolName} instance URL (e.g., https://your-company.${toolName}.com)
+${envPrefix}_INSTANCE_URL=
+
+# ===========================================
+# AUTHENTICATION
+# ===========================================
+#
+# This MCP uses Azure AD SSO authentication.
+# Run 'npm run setup' to configure credentials.
+#
+# Credentials are stored securely in your system keychain.
+# See README.md for details.
+#
+
+# Optional: Override default log level
+LOG_LEVEL=info
+`;
+  }
 
   let envDoc = `# ${toolName.toUpperCase()} MCP Authentication Configuration
 # Generated: ${new Date().toISOString()}
@@ -274,8 +315,13 @@ MAX_RETRIES=3
  * Generate README section explaining multi-auth setup
  */
 export function generateUnifiedAuthReadme(config: UnifiedAuthConfig): string {
-  const { toolName, enableHARFallback = true } = config;
+  const { toolName, enableHARFallback = true, azureAdSsoConfig } = config;
   const envPrefix = toolName.toUpperCase().replace(/-/g, "_");
+
+  // If Azure AD SSO is configured, use the specialized readme
+  if (azureAdSsoConfig) {
+    return generateAzureAdSsoReadme(azureAdSsoConfig);
+  }
 
   return `## Authentication
 
