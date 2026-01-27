@@ -72,9 +72,17 @@ export {
 export {
   AZURE_AD_SSO_AUTH,
   AzureAdSsoConfigSchema,
+  generateAzureAdAutomatorModule,
+  generateLoggerModule,
+  generateExecFileNoThrowModule,
+  generateCredentialStoreModule,
+  generateConfigManagerModule,
   generateRobustAuthModule,
   generateSetupWizardModule,
+  generateHealthCheckModule,
   generatePackageJsonAdditions,
   generateAzureAdSsoReadme,
+  generateAllAzureAdSsoFiles,
   type AzureAdSsoConfig,
+  type GeneratedAuthFiles,
 } from "./azure-ad-sso-auth.js";
