@@ -453,3 +453,220 @@ interface EndpointInfo {
   }>;
   security?: Array<Record<string, unknown>>;
 }
+
+// ============================================================================
+// SSO Pattern Detection
+// ============================================================================
+
+import type {
+  SsoIdpType,
+  SsoDetectionResult,
+  SsoPattern,
+} from "../types/index.js";
+import {
+  GlobalSsoStore,
+  getGlobalSsoStore,
+} from "../security/global-sso-store.js";
+
+/**
+ * Known SSO patterns for automatic detection
+ */
+export const KNOWN_SSO_PATTERNS: SsoPattern[] = [
+  {
+    name: "azure-ad-enterprise",
+    idpType: "azure-ad",
+    urlPatterns: [
+      "login.microsoftonline.com",
+      "login.microsoft.com",
+      "sts.windows.net",
+      "adfs.",
+      "/adfs/",
+      "/oauth2/authorize",
+      "microsoftonline.com",
+    ],
+    realmExtractor: "/([a-zA-Z0-9-]+\\.[a-zA-Z]{2,})/",
+    authModule: "azure-ad-sso-auth",
+  },
+  {
+    name: "okta-sso",
+    idpType: "okta",
+    urlPatterns: [
+      ".okta.com",
+      "/oauth2/default/v1/authorize",
+      ".oktapreview.com",
+    ],
+    realmExtractor: "([^.]+)\\.okta\\.com",
+    authModule: "okta-sso-auth",
+  },
+  {
+    name: "auth0-sso",
+    idpType: "auth0",
+    urlPatterns: [".auth0.com", ".us.auth0.com", ".eu.auth0.com", "/authorize"],
+    realmExtractor: "([^.]+)\\.auth0\\.com",
+    authModule: "auth0-sso-auth",
+  },
+  {
+    name: "generic-saml",
+    idpType: "generic",
+    urlPatterns: ["/saml/", "/saml2/", "samlp:", "/sso/", "/signon/", "/idp/"],
+    authModule: "generic-sso-auth",
+  },
+];
+
+/**
+ * Detect SSO requirements from a URL or response
+ */
+export function detectSsoFromUrl(url: string): {
+  pattern: SsoPattern | null;
+  realm: string | null;
+} {
+  const lowerUrl = url.toLowerCase();
+
+  for (const pattern of KNOWN_SSO_PATTERNS) {
+    for (const urlPattern of pattern.urlPatterns) {
+      if (lowerUrl.includes(urlPattern.toLowerCase())) {
+        // Try to extract realm
+        let realm: string | null = null;
+
+        if (pattern.realmExtractor) {
+          try {
+            const regex = new RegExp(pattern.realmExtractor, "i");
+            const match = url.match(regex);
+            if (match && match[1]) {
+              realm = match[1].toLowerCase();
+            }
+          } catch {
+            // Invalid regex, skip
+          }
+        }
+
+        // Fallback: try to extract from URL host
+        if (!realm) {
+          realm = GlobalSsoStore.extractRealmFromUrl(url);
+        }
+
+        return { pattern, realm };
+      }
+    }
+  }
+
+  return { pattern: null, realm: null };
+}
+
+/**
+ * Detect SSO requirements from response headers
+ */
+export function detectSsoFromHeaders(headers: Record<string, string>): {
+  pattern: SsoPattern | null;
+  loginUrl: string | null;
+} {
+  const normalizedHeaders: Record<string, string> = {};
+  for (const [key, value] of Object.entries(headers)) {
+    normalizedHeaders[key.toLowerCase()] = value;
+  }
+
+  // Check for WWW-Authenticate header
+  const wwwAuth = normalizedHeaders["www-authenticate"];
+  if (wwwAuth) {
+    // Bearer with authorization_uri indicates OAuth/OIDC
+    if (wwwAuth.includes("authorization_uri=")) {
+      const match = wwwAuth.match(/authorization_uri="?([^"\s,]+)"?/i);
+      if (match) {
+        const authUrl = match[1];
+        const { pattern, realm } = detectSsoFromUrl(authUrl);
+        return { pattern, loginUrl: authUrl };
+      }
+    }
+
+    // Check for common SSO indicators
+    if (wwwAuth.toLowerCase().includes("bearer")) {
+      // Check Location header for redirect
+      const location = normalizedHeaders["location"];
+      if (location) {
+        const { pattern } = detectSsoFromUrl(location);
+        if (pattern) {
+          return { pattern, loginUrl: location };
+        }
+      }
+    }
+  }
+
+  // Check Location header for SSO redirect
+  const location = normalizedHeaders["location"];
+  if (location) {
+    const { pattern } = detectSsoFromUrl(location);
+    if (pattern) {
+      return { pattern, loginUrl: location };
+    }
+  }
+
+  return { pattern: null, loginUrl: null };
+}
+
+/**
+ * Full SSO detection with global credential check
+ */
+export async function detectSsoRequirements(
+  url: string,
+  responseHeaders?: Record<string, string>,
+): Promise<SsoDetectionResult> {
+  const result: SsoDetectionResult = {
+    requiresSso: false,
+    idpType: null,
+    realm: null,
+    loginUrl: null,
+    indicators: [],
+  };
+
+  // Check URL first
+  const urlDetection = detectSsoFromUrl(url);
+  if (urlDetection.pattern) {
+    result.requiresSso = true;
+    result.idpType = urlDetection.pattern.idpType;
+    result.realm = urlDetection.realm;
+    result.loginUrl = url;
+    result.indicators.push(`URL matches ${urlDetection.pattern.name} pattern`);
+  }
+
+  // Check headers if provided
+  if (responseHeaders) {
+    const headerDetection = detectSsoFromHeaders(responseHeaders);
+    if (headerDetection.pattern) {
+      result.requiresSso = true;
+      result.idpType = headerDetection.pattern.idpType;
+      result.loginUrl = headerDetection.loginUrl || result.loginUrl;
+      result.indicators.push(
+        `Response headers indicate ${headerDetection.pattern.name}`,
+      );
+
+      // Update realm from login URL if not already set
+      if (!result.realm && headerDetection.loginUrl) {
+        result.realm = GlobalSsoStore.extractRealmFromUrl(
+          headerDetection.loginUrl,
+        );
+      }
+    }
+  }
+
+  // Check for existing global credentials
+  if (result.realm) {
+    const store = getGlobalSsoStore();
+    const existingCred = await store.getForRealm(result.realm);
+    if (existingCred) {
+      result.existingCredential = existingCred;
+      result.indicators.push(
+        `Found existing global SSO credentials for ${result.realm}`,
+      );
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Get the auth module name for a detected SSO pattern
+ */
+export function getSsoAuthModule(idpType: SsoIdpType): string {
+  const pattern = KNOWN_SSO_PATTERNS.find((p) => p.idpType === idpType);
+  return pattern?.authModule || "generic-sso-auth";
+}

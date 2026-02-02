@@ -86,3 +86,11 @@ export {
   type AzureAdSsoConfig,
   type GeneratedAuthFiles,
 } from "./azure-ad-sso-auth.js";
+
+// Global SSO Credential Store (shared credentials across MCPs)
+export {
+  GlobalSsoStore,
+  getGlobalSsoStore,
+  hasGlobalSsoCredentials,
+  getGlobalSsoCredentials,
+} from "./global-sso-store.js";

@@ -811,3 +811,101 @@ export const HarFileSchema = z.object({
 });
 
 export type HarFile = z.infer<typeof HarFileSchema>;
+
+// ============================================================================
+// Global SSO Credential Types
+// ============================================================================
+
+export const SsoIdpTypeSchema = z.enum([
+  "azure-ad",
+  "okta",
+  "auth0",
+  "generic",
+]);
+
+export type SsoIdpType = z.infer<typeof SsoIdpTypeSchema>;
+
+export const GlobalSsoCredentialSchema = z.object({
+  realm: z.string().describe("Domain realm, e.g., 'qvc.com'"),
+  email: z.string().email().describe("User email address"),
+  passwordKeychainKey: z
+    .string()
+    .describe("Keychain entry name for password storage"),
+  mfaScript: z.string().optional().describe("Path to TOTP generator script"),
+  idpType: SsoIdpTypeSchema.describe("Identity provider type"),
+  tenantId: z.string().optional().describe("Azure AD tenant ID if applicable"),
+  createdAt: z.coerce.date(),
+  lastUsed: z.coerce.date(),
+});
+
+export type GlobalSsoCredential = z.infer<typeof GlobalSsoCredentialSchema>;
+
+export const GlobalSsoStoreSchema = z.object({
+  version: z.number().default(1),
+  credentials: z.array(GlobalSsoCredentialSchema),
+  updatedAt: z.coerce.date(),
+});
+
+export type GlobalSsoStore = z.infer<typeof GlobalSsoStoreSchema>;
+
+// ============================================================================
+// SSO Detection Types
+// ============================================================================
+
+export const SsoDetectionResultSchema = z.object({
+  requiresSso: z.boolean(),
+  idpType: SsoIdpTypeSchema.nullable(),
+  realm: z.string().nullable(),
+  loginUrl: z.string().nullable(),
+  tenantId: z.string().nullable().optional(),
+  indicators: z.array(z.string()).describe("Evidence that led to detection"),
+  existingCredential: GlobalSsoCredentialSchema.optional(),
+});
+
+export type SsoDetectionResult = z.infer<typeof SsoDetectionResultSchema>;
+
+// ============================================================================
+// SSO Pattern Types
+// ============================================================================
+
+export const SsoPatternSchema = z.object({
+  name: z.string(),
+  idpType: SsoIdpTypeSchema,
+  urlPatterns: z
+    .array(z.string())
+    .describe("URL patterns that indicate this IdP"),
+  realmExtractor: z
+    .string()
+    .optional()
+    .describe("Regex to extract realm from URL"),
+  authModule: z
+    .string()
+    .describe("Name of auth module to generate, e.g., 'azure-ad-sso-auth'"),
+});
+
+export type SsoPattern = z.infer<typeof SsoPatternSchema>;
+
+// ============================================================================
+// Config Validation Types
+// ============================================================================
+
+export const ConfigValidationRuleSchema = z.object({
+  field: z.string(),
+  type: z.enum(["email", "url", "non-empty", "json-safe"]),
+  message: z.string().describe("Error message if validation fails"),
+});
+
+export type ConfigValidationRule = z.infer<typeof ConfigValidationRuleSchema>;
+
+export const ConfigValidationResultSchema = z.object({
+  valid: z.boolean(),
+  errors: z.array(
+    z.object({
+      field: z.string(),
+      value: z.string(),
+      message: z.string(),
+    }),
+  ),
+  corrupted: z.boolean().describe("True if corruption pattern detected"),
+  recoverable: z.boolean().describe("True if backup exists and is valid"),
+});
