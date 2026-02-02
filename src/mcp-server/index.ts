@@ -129,6 +129,17 @@ thesun handles EVERYTHING autonomously:
           description:
             "If API docs exist at a known URL, provide it to skip browser capture and use documented endpoints.",
         },
+        authMethod: {
+          type: "string",
+          enum: ["auto", "sso", "api_key", "oauth", "har", "none"],
+          description:
+            "Force a specific authentication method. 'sso' = Azure AD/corporate SSO via browser, 'api_key' = API key/token, 'oauth' = OAuth2 flow, 'har' = HAR file capture, 'none' = no auth needed, 'auto' = detect from API docs (default).",
+        },
+        skipApiKeySearch: {
+          type: "boolean",
+          description:
+            "Skip searching for API key documentation. Use when you know the service requires SSO/browser auth and want to avoid API key prompts.",
+        },
       },
       required: ["target"],
     },
@@ -147,6 +158,12 @@ const TheSunInput = z.object({
   loginUrl: z.string().optional(),
   actions: z.array(z.string()).optional(),
   apiDocsUrl: z.string().url().optional(),
+  // Auth method override
+  authMethod: z
+    .enum(["auto", "sso", "api_key", "oauth", "har", "none"])
+    .optional()
+    .default("auto"),
+  skipApiKeySearch: z.boolean().optional().default(false),
 });
 
 class TheSunMcpServer {
@@ -281,9 +298,32 @@ Execute the complete pipeline below WITHOUT stopping for human input.
 **Output:** ${outputDir}
 **MCP Config:** ${mcpConfigPath}
 ${input.spec ? `**Spec:** ${input.spec}` : ""}
+${input.authMethod !== "auto" ? `**Auth Method:** ${input.authMethod} (FORCED - do NOT search for or suggest API keys)` : ""}
+${input.skipApiKeySearch ? `**Skip API Key Search:** YES - User explicitly wants browser/SSO auth, not API keys` : ""}
 
 > **IMPORTANT**: This tool is directory-independent. The output path is ABSOLUTE.
 > The generated MCP will be available globally in ALL Claude sessions.
+${
+  input.authMethod === "sso"
+    ? `
+> **SSO MODE**: Generate using Azure AD SSO browser authentication.
+> - DO NOT look for or mention API keys/tokens
+> - DO NOT prompt user to create API tokens
+> - Use browser-based SSO auth (Playwright Firefox)
+> - Capture session cookies for API calls
+> - Auto-reauthenticate on 401 errors
+`
+    : ""
+}${
+      input.skipApiKeySearch
+        ? `
+> **NO API KEYS**: User explicitly does not want API key authentication.
+> - Skip all API key documentation searches
+> - Do not suggest creating API tokens
+> - Use browser capture or SSO for authentication
+`
+        : ""
+    }
 
 ---
 
