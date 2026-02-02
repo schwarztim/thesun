@@ -16,7 +16,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "lint": "eslint src --ext .ts",
+    "lint": "eslint src",
     "format": "prettier --write \"src/**/*.ts\"",
     "generate": "node dist/cli/index.js generate",
     "orchestrator:start": "node dist/orchestrator/index.js",
@@ -36,17 +36,20 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.2",
     "@types/better-sqlite3": "^7.6.11",
     "@types/node": "^22.0.0",
     "@types/uuid": "^10.0.0",
-    "@typescript-eslint/eslint-plugin": "^7.0.0",
-    "@typescript-eslint/parser": "^7.0.0",
     "@vitest/coverage-v8": "^4.0.17",
-    "eslint": "^8.57.0",
+    "eslint": "^9.26.0",
     "nock": "^14.0.0",
     "prettier": "^3.2.0",
     "typescript": "^5.7.2",
+    "typescript-eslint": "^8.32.0",
     "vitest": "^4.0.17"
+  },
+  "overrides": {
+    "hono": "^4.11.7"
   },
   "engines": {
     "node": ">=18.0.0"
