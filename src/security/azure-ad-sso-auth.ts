@@ -152,19 +152,197 @@ export interface LoginCredentials {
   mfaScript: string;
 }
 
+/**
+ * Discovered API headers from network interception
+ */
+export interface DiscoveredApiHeaders {
+  csrfToken?: string;
+  csrfHeaderName?: string;
+  bearerToken?: string;
+  customHeaders: Record<string, string>;
+  contentType?: string;
+}
+
 export interface LoginResult {
   success: boolean;
   error?: string;
   cookies?: any[];
   requiresManualMfa?: boolean; // True when push MFA detected (Authenticator/phone)
+  discoveredHeaders?: DiscoveredApiHeaders; // Headers captured from network traffic
 }
 
 export class AzureADAutomator {
   private logger: Logger;
   private instanceUrl: string | null = null;
+  private capturedHeaders: Map<string, string> = new Map();
+  private capturedApiCalls: Array<{ url: string; headers: Record<string, string> }> = [];
 
   constructor(logger: Logger) {
     this.logger = logger;
+  }
+
+  /**
+   * Set up network interception to capture API headers
+   */
+  private async setupNetworkInterception(page: Page): Promise<void> {
+    // Listen for all requests to capture headers
+    page.on("request", (request) => {
+      const url = request.url();
+      const headers = request.headers();
+
+      // Only capture XHR/fetch calls to the target app (not SSO pages)
+      if (this.instanceUrl && url.includes(this.instanceUrl.replace(/^https?:\\/\\//, ""))) {
+        // Skip static resources
+        const resourceType = request.resourceType();
+        if (["xhr", "fetch"].includes(resourceType) || url.includes("/api/")) {
+          this.capturedApiCalls.push({ url, headers: { ...headers } });
+
+          // Look for CSRF tokens in headers
+          for (const [key, value] of Object.entries(headers)) {
+            const lowerKey = key.toLowerCase();
+            if (lowerKey.includes("csrf") || lowerKey.includes("xsrf") || lowerKey === "x-token") {
+              this.capturedHeaders.set(key, value);
+              this.logger.debug(\`Captured header: \${key}\`);
+            }
+            // Capture other interesting headers
+            if (lowerKey === "x-requested-with" || lowerKey === "authorization" ||
+                lowerKey.startsWith("x-") && !lowerKey.includes("forwarded")) {
+              this.capturedHeaders.set(key, value);
+            }
+          }
+        }
+      }
+    });
+
+    this.logger.debug("Network interception enabled for API header discovery");
+  }
+
+  /**
+   * Extract additional tokens from page context (localStorage, sessionStorage, window vars)
+   */
+  private async extractPageTokens(page: Page): Promise<Record<string, string>> {
+    const tokens: Record<string, string> = {};
+
+    try {
+      const pageTokens = await page.evaluate(() => {
+        const result: Record<string, string> = {};
+
+        // Check window variables for CSRF/API tokens
+        const tokenVars = [
+          "g_ck", "csrfToken", "csrf_token", "_csrf", "xsrfToken",
+          "apiToken", "api_token", "authToken", "__csrf_token__"
+        ];
+
+        for (const varName of tokenVars) {
+          try {
+            const win = window as any;
+            if (win[varName]) {
+              result[\`window.\${varName}\`] = String(win[varName]);
+            }
+            // Check common namespaces
+            if (win.NOW && win.NOW[varName]) {
+              result[\`NOW.\${varName}\`] = String(win.NOW[varName]);
+            }
+            if (win.__APP_STATE__ && win.__APP_STATE__[varName]) {
+              result[\`__APP_STATE__.\${varName}\`] = String(win.__APP_STATE__[varName]);
+            }
+          } catch {}
+        }
+
+        // Check localStorage
+        try {
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && (key.toLowerCase().includes("token") ||
+                        key.toLowerCase().includes("csrf") ||
+                        key.toLowerCase().includes("auth"))) {
+              const value = localStorage.getItem(key);
+              if (value && value.length < 500) { // Skip large values
+                result[\`localStorage.\${key}\`] = value;
+              }
+            }
+          }
+        } catch {}
+
+        // Check sessionStorage
+        try {
+          for (let i = 0; i < sessionStorage.length; i++) {
+            const key = sessionStorage.key(i);
+            if (key && (key.toLowerCase().includes("token") ||
+                        key.toLowerCase().includes("csrf") ||
+                        key.toLowerCase().includes("auth"))) {
+              const value = sessionStorage.getItem(key);
+              if (value && value.length < 500) {
+                result[\`sessionStorage.\${key}\`] = value;
+              }
+            }
+          }
+        } catch {}
+
+        // Check meta tags
+        try {
+          const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+          if (csrfMeta) {
+            result["meta.csrf-token"] = csrfMeta.getAttribute("content") || "";
+          }
+          const xsrfMeta = document.querySelector('meta[name="_csrf"]');
+          if (xsrfMeta) {
+            result["meta._csrf"] = xsrfMeta.getAttribute("content") || "";
+          }
+        } catch {}
+
+        return result;
+      });
+
+      Object.assign(tokens, pageTokens);
+      this.logger.debug(\`Extracted \${Object.keys(pageTokens).length} page tokens\`);
+    } catch (error) {
+      this.logger.debug("Could not extract page tokens (may be expected)");
+    }
+
+    return tokens;
+  }
+
+  /**
+   * Analyze captured traffic to determine required API headers
+   */
+  private analyzeDiscoveredHeaders(): DiscoveredApiHeaders {
+    const result: DiscoveredApiHeaders = {
+      customHeaders: {},
+    };
+
+    // Analyze captured headers
+    for (const [key, value] of this.capturedHeaders.entries()) {
+      const lowerKey = key.toLowerCase();
+
+      if (lowerKey.includes("csrf") || lowerKey.includes("xsrf")) {
+        result.csrfToken = value;
+        result.csrfHeaderName = key;
+      } else if (lowerKey === "authorization" && value.startsWith("Bearer ")) {
+        result.bearerToken = value.replace("Bearer ", "");
+      } else if (lowerKey === "x-requested-with") {
+        result.customHeaders[key] = value;
+      } else if (lowerKey.startsWith("x-") && value) {
+        result.customHeaders[key] = value;
+      }
+    }
+
+    // Analyze captured API calls for patterns
+    if (this.capturedApiCalls.length > 0) {
+      const contentTypes = new Set<string>();
+      for (const call of this.capturedApiCalls) {
+        const ct = call.headers["content-type"];
+        if (ct) contentTypes.add(ct);
+      }
+      // Use most common content type
+      if (contentTypes.size > 0) {
+        result.contentType = [...contentTypes][0];
+      }
+    }
+
+    this.logger.info(\`Discovered \${Object.keys(result.customHeaders).length} custom headers, CSRF: \${result.csrfToken ? "yes" : "no"}\`);
+
+    return result;
   }
 
   /**
@@ -177,8 +355,14 @@ export class AzureADAutomator {
     instanceUrl?: string
   ): Promise<LoginResult> {
     this.instanceUrl = instanceUrl || null;
+    this.capturedHeaders.clear();
+    this.capturedApiCalls = [];
+
     try {
       this.logger.info("Starting Azure AD login automation");
+
+      // Set up network interception BEFORE any navigation
+      await this.setupNetworkInterception(page);
 
       // Step 1: Email field
       const emailFilled = await this.detectAndFillEmail(page, credentials.email, timeout);
@@ -220,11 +404,92 @@ export class AzureADAutomator {
       // Extract cookies for session persistence
       const cookies = await page.context().cookies();
 
+      // Extract CSRF token from cookies if present
+      // Common pattern: CSRF token in cookie must also be sent as header
+      for (const cookie of cookies) {
+        const name = cookie.name.toLowerCase();
+        if (name.includes("csrf") || name.includes("xsrf") || name === "_csrf") {
+          this.capturedHeaders.set(cookie.name, cookie.value);
+          this.logger.debug(\`Found CSRF cookie: \${cookie.name}\`);
+        }
+      }
+
+      // Wait a moment for any post-login API calls
+      await page.waitForTimeout(2000);
+
+      // Try to trigger a sample API call to capture required headers
+      await this.triggerSampleApiCall(page);
+
+      // Extract tokens from page context
+      const pageTokens = await this.extractPageTokens(page);
+
+      // Merge page tokens into captured headers
+      for (const [key, value] of Object.entries(pageTokens)) {
+        if (key.includes("csrf") || key.includes("token")) {
+          // Store with a normalized key
+          const headerKey = key.includes("csrf") ? "X-CSRFToken" : "X-Token";
+          if (!this.capturedHeaders.has(headerKey)) {
+            this.capturedHeaders.set(headerKey, value);
+          }
+        }
+      }
+
+      // Analyze all discovered headers
+      const discoveredHeaders = this.analyzeDiscoveredHeaders();
+
       this.logger.info("Azure AD login completed successfully");
-      return { success: true, cookies };
+      this.logger.info(\`Discovered API requirements: \${JSON.stringify(discoveredHeaders)}\`);
+
+      return { success: true, cookies, discoveredHeaders };
     } catch (error: any) {
       this.logger.error("Azure AD login failed", error);
       return { success: false, error: error.message || "Unknown error during login" };
+    }
+  }
+
+  /**
+   * Trigger a sample API call to capture the headers the app uses
+   */
+  private async triggerSampleApiCall(page: Page): Promise<void> {
+    if (!this.instanceUrl) return;
+
+    try {
+      // Try clicking something that would trigger an API call
+      // Or navigate to a page that loads data
+      const currentUrl = page.url();
+
+      // Wait for any lazy-loaded API calls
+      await page.waitForLoadState("networkidle");
+
+      // If we haven't captured any API calls yet, try to trigger one
+      if (this.capturedApiCalls.length === 0) {
+        this.logger.debug("No API calls captured yet, attempting to trigger one...");
+
+        // Try common API endpoints to discover patterns
+        const testEndpoints = [
+          "/api/v2/settings",
+          "/api/v1/config",
+          "/api/now/table/sys_user?sysparm_limit=1",
+          "/rest/api/latest/myself",
+          "/api/me",
+        ];
+
+        for (const endpoint of testEndpoints) {
+          try {
+            // Use page.evaluate to make a fetch call and capture what headers the browser sends
+            await page.evaluate(async (url: string) => {
+              try {
+                await fetch(url, { method: "GET", credentials: "include" });
+              } catch {}
+            }, this.instanceUrl + endpoint);
+            await page.waitForTimeout(500);
+          } catch {}
+        }
+      }
+
+      this.logger.debug(\`Captured \${this.capturedApiCalls.length} API calls for header analysis\`);
+    } catch (error) {
+      this.logger.debug("Could not trigger sample API call (may be expected)");
     }
   }
 
@@ -1089,6 +1354,13 @@ export interface RobustAuthResult {
   instanceUrl?: string;
   error?: string;
   method?: "headless" | "visible" | "cached";
+  discoveredHeaders?: {
+    csrfToken?: string;
+    csrfHeaderName?: string;
+    bearerToken?: string;
+    customHeaders: Record<string, string>;
+    contentType?: string;
+  };
 }
 
 /**
@@ -1187,6 +1459,7 @@ function loadCachedCookies(): RobustAuthResult | null {
       userToken: data.userToken || "",
       instanceUrl: data.instanceUrl,
       method: "cached",
+      discoveredHeaders: data.discoveredHeaders || { customHeaders: {} },
     };
   } catch {
     return null;
@@ -1194,9 +1467,14 @@ function loadCachedCookies(): RobustAuthResult | null {
 }
 
 /**
- * Save cookies to cache
+ * Save cookies and discovered headers to cache
  */
-function saveCookies(instanceUrl: string, cookies: any[], userToken?: string): void {
+function saveCookies(
+  instanceUrl: string,
+  cookies: any[],
+  userToken?: string,
+  discoveredHeaders?: RobustAuthResult["discoveredHeaders"]
+): void {
   if (!existsSync(CONFIG_DIR)) {
     mkdirSync(CONFIG_DIR, { recursive: true });
   }
@@ -1205,12 +1483,19 @@ function saveCookies(instanceUrl: string, cookies: any[], userToken?: string): v
     instanceUrl,
     cookies,
     userToken: userToken || "",
+    discoveredHeaders: discoveredHeaders || { customHeaders: {} },
     timestamp: new Date().toISOString(),
     source: "robust-auth",
   };
 
   writeFileSync(COOKIE_FILE, JSON.stringify(data, null, 2));
   console.error(\`✅ Cookies saved (\${cookies.length} cookies)\`);
+  if (discoveredHeaders?.csrfToken) {
+    console.error(\`✅ CSRF token captured: \${discoveredHeaders.csrfHeaderName}\`);
+  }
+  if (Object.keys(discoveredHeaders?.customHeaders || {}).length > 0) {
+    console.error(\`✅ Custom headers captured: \${Object.keys(discoveredHeaders!.customHeaders).join(", ")}\`);
+  }
 }
 
 /**
@@ -1279,7 +1564,10 @@ async function performAuth(
         // Ignore token extraction errors
       }
 
-      saveCookies(instanceUrl, result.cookies, userToken);
+      // Get discovered headers from the login result
+      const discoveredHeaders = result.discoveredHeaders || { customHeaders: {} };
+
+      saveCookies(instanceUrl, result.cookies, userToken, discoveredHeaders);
 
       const cookieString = result.cookies
         .map((c: any) => \`\${c.name}=\${c.value}\`)
@@ -1291,6 +1579,7 @@ async function performAuth(
         userToken,
         instanceUrl,
         method: headless ? "headless" : "visible",
+        discoveredHeaders,
       };
     }
 
@@ -1404,6 +1693,12 @@ export async function validateSession(instanceUrl: string, cookies: string): Pro
 
 /**
  * Get authentication headers for API requests
+ *
+ * Returns ALL required headers discovered during authentication:
+ * - Cookie: Session cookies
+ * - CSRF token: If discovered (with correct header name)
+ * - Bearer token: If discovered
+ * - Custom headers: Any other headers captured from API traffic
  */
 export async function getAuthHeaders(): Promise<Record<string, string>> {
   const result = await robustAuthenticate();
@@ -1414,12 +1709,43 @@ export async function getAuthHeaders(): Promise<Record<string, string>> {
 
   const headers: Record<string, string> = {};
 
+  // Add cookies
   if (result.cookies) {
     headers["Cookie"] = result.cookies;
   }
 
+  // Add user token (ServiceNow-specific but harmless for others)
   if (result.userToken) {
     headers["x-usertoken"] = result.userToken;
+  }
+
+  // Add discovered CSRF token
+  if (result.discoveredHeaders?.csrfToken) {
+    const headerName = result.discoveredHeaders.csrfHeaderName || "X-CSRFToken";
+    headers[headerName] = result.discoveredHeaders.csrfToken;
+    console.error(\`✅ Using CSRF header: \${headerName}\`);
+  }
+
+  // Add bearer token if discovered
+  if (result.discoveredHeaders?.bearerToken) {
+    headers["Authorization"] = \`Bearer \${result.discoveredHeaders.bearerToken}\`;
+  }
+
+  // Add all custom headers discovered from traffic
+  if (result.discoveredHeaders?.customHeaders) {
+    for (const [key, value] of Object.entries(result.discoveredHeaders.customHeaders)) {
+      headers[key] = value;
+    }
+  }
+
+  // Add X-Requested-With if not already present (common requirement)
+  if (!headers["X-Requested-With"]) {
+    headers["X-Requested-With"] = "XMLHttpRequest";
+  }
+
+  // Add content type if discovered
+  if (result.discoveredHeaders?.contentType) {
+    headers["Content-Type"] = result.discoveredHeaders.contentType;
   }
 
   return headers;
