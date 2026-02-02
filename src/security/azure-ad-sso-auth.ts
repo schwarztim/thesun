@@ -132,6 +132,18 @@ const SELECTORS = {
     'input[type="submit"][value="No"]',
     'button:has-text("No")',
   ],
+  // Push MFA detection (Authenticator app, phone call)
+  mfaPushPrompt: [
+    'div:has-text("Approve sign in request")',
+    'div:has-text("Open your Authenticator app")',
+    'div:has-text("We\'ve sent a notification")',
+    "#idDiv_SAOTCAS_Title",
+    "#idRichContext_DisplaySign", // Number matching challenge
+  ],
+  mfaPhoneCall: [
+    'div:has-text("We\'re calling")',
+    'div:has-text("Answer the call")',
+  ],
 } as const;
 
 export interface LoginCredentials {
@@ -144,6 +156,7 @@ export interface LoginResult {
   success: boolean;
   error?: string;
   cookies?: any[];
+  requiresManualMfa?: boolean; // True when push MFA detected (Authenticator/phone)
 }
 
 export class AzureADAutomator {
@@ -183,6 +196,13 @@ export class AzureADAutomator {
       // Step 3: MFA code (may or may not appear)
       await page.waitForTimeout(1000);
       const mfaHandled = await this.detectAndFillMFA(page, credentials.mfaScript, timeout);
+      if (mfaHandled === "push_mfa_detected") {
+        return {
+          success: false,
+          error: "Push MFA detected - requires visible browser for manual approval",
+          requiresManualMfa: true,
+        };
+      }
       if (!mfaHandled) {
         this.logger.warn("MFA handling failed or not required");
       }
@@ -331,10 +351,72 @@ export class AzureADAutomator {
   }
 
   /**
-   * Detect MFA field, generate code via script, and submit
+   * Detect push MFA (Authenticator app, phone call) that requires manual approval
    */
-  private async detectAndFillMFA(page: Page, mfaScript: string, timeout: number): Promise<boolean> {
-    this.logger.info("Checking for MFA field");
+  private async detectPushMfa(page: Page): Promise<"push" | "phone" | null> {
+    // Check page content for push MFA indicators
+    const content = await page.content();
+
+    const pushIndicators = [
+      "Approve sign in request",
+      "Open your Authenticator app",
+      "We've sent a notification",
+      "Microsoft Authenticator",
+      "Approve the request",
+    ];
+
+    const phoneIndicators = [
+      "We're calling",
+      "Answer the call",
+      "phone call",
+    ];
+
+    for (const indicator of phoneIndicators) {
+      if (content.toLowerCase().includes(indicator.toLowerCase())) {
+        return "phone";
+      }
+    }
+
+    for (const indicator of pushIndicators) {
+      if (content.toLowerCase().includes(indicator.toLowerCase())) {
+        return "push";
+      }
+    }
+
+    // Also check for number matching display
+    for (const selector of SELECTORS.mfaPushPrompt) {
+      try {
+        const element = await page.$(selector);
+        if (element) {
+          return "push";
+        }
+      } catch {
+        // Selector not found, continue
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Detect MFA field, generate code via script, and submit
+   * Returns "push_mfa_detected" if push MFA is detected (requires manual approval)
+   */
+  private async detectAndFillMFA(page: Page, mfaScript: string, timeout: number): Promise<boolean | "push_mfa_detected"> {
+    this.logger.info("Checking for MFA prompts");
+
+    // First check for push MFA (Authenticator app, phone call)
+    const pushMfaType = await this.detectPushMfa(page);
+    if (pushMfaType) {
+      if (pushMfaType === "phone") {
+        this.logger.warn("⚠️  Phone call MFA detected - requires manual approval!");
+        this.logger.warn("   Please answer the phone call to complete authentication");
+      } else {
+        this.logger.warn("⚠️  Push/phone MFA detected - requires manual approval!");
+        this.logger.warn("   Please check your Microsoft Authenticator app or phone");
+      }
+      return "push_mfa_detected";
+    }
 
     const mfaFieldExists = await this.trySelectors(
       page,
@@ -1162,6 +1244,9 @@ async function performAuth(
     browser = await firefox.launch({
       headless,
       timeout: 30000,
+      firefoxUserPrefs: {
+        "security.default_personal_cert": "Select Automatically",
+      },
     });
 
     const context = await browser.newContext({
@@ -1665,7 +1750,12 @@ async function main() {
       const logger = new Logger("INFO");
 
       console.log(chalk.dim("  Attempting background authentication...\\n"));
-      const browser = await firefox.launch({ headless: true });
+      const browser = await firefox.launch({
+        headless: true,
+        firefoxUserPrefs: {
+          "security.default_personal_cert": "Select Automatically",
+        },
+      });
       const context = await browser.newContext();
       const page = await context.newPage();
 
@@ -1707,7 +1797,12 @@ async function main() {
         console.log(chalk.dim(\`  \${result.error}\\n\`));
 
         try {
-          const visibleBrowser = await firefox.launch({ headless: false });
+          const visibleBrowser = await firefox.launch({
+            headless: false,
+            firefoxUserPrefs: {
+              "security.default_personal_cert": "Select Automatically",
+            },
+          });
           const visibleContext = await visibleBrowser.newContext();
           const visiblePage = await visibleContext.newPage();
 
