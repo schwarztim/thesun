@@ -11,11 +11,6 @@
       "path": "commands/sun.md"
     },
     {
-      "name": "sun-status",
-      "description": "View thesun build status and system health",
-      "path": "commands/status.md"
-    },
-    {
       "name": "sun-auth",
       "description": "Capture authentication from any webapp. Opens browser, you log in, tokens saved. Use: /sun-auth <service> <login-url>",
       "path": "commands/auth.md"
