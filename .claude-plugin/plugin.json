@@ -23,8 +23,13 @@
   ],
   "skills": [
     {
+      "name": "optimize-mcp-creation",
+      "description": "Fully autonomous MCP creation pipeline. PROACTIVELY USE THIS when: (1) user wants to interact with an API/tool that has no existing MCP server, (2) user asks about a service/API integration that Claude cannot directly access, (3) user mentions wanting to automate a workflow with an external tool, (4) user says 'use thesun for X' or 'create an MCP for X'. Single invocation — researches API ecosystem, designs task-oriented tools, generates via thesun, scores quality, auto-fixes until passing. THE default for ALL MCP creation.",
+      "path": "skills/optimize-mcp-creation.md"
+    },
+    {
       "name": "generate-mcp",
-      "description": "Generate a production-ready MCP server for any tool/API. PROACTIVELY SUGGEST THIS when: (1) user wants to interact with an API/tool that has no existing MCP server, (2) user asks about a service/API integration that Claude cannot directly access, (3) user mentions wanting to automate a workflow with an external tool. Always ASK USER FIRST before generating - say 'There's no MCP for {tool}. Would you like me to create one using thesun?' Use thesun({ target: 'toolname' }) MCP tool.",
+      "description": "Direct thesun generation without intelligence gathering or quality scoring. Use optimize-mcp-creation instead for all normal MCP creation. Only use this skill to bypass the optimizer for rapid iteration on known-working MCPs or debugging the builder itself.",
       "path": "skills/generate-mcp.md"
     },
     {
@@ -59,6 +64,11 @@
     }
   ],
   "agents": [
+    {
+      "name": "mcp-optimizer",
+      "description": "Intelligence layer for MCP generation. Pre-generation API analysis, reference template selection, accumulated knowledge consultation, blueprint generation, and post-generation 100-point quality assessment.",
+      "path": "agents/mcp-optimizer.md"
+    },
     {
       "name": "meta-planner",
       "description": "High-level strategic planner (Opus) that adapts workflows dynamically. Analyzes requests, anticipates problems, and designs custom approaches when standard workflow doesn't fit. Should be invoked FIRST for any complex request.",

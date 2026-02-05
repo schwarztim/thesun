@@ -5,6 +5,16 @@ description: Generate a production-ready MCP server for any tool/API
 
 # Generate MCP Skill
 
+> **STOP: Use `optimize-mcp-creation` instead.**
+>
+> This skill runs thesun directly without intelligence gathering, tool design,
+> or quality scoring. `optimize-mcp-creation` is the fully autonomous pipeline
+> that researches the API ecosystem, designs task-oriented tools, generates via
+> thesun, scores quality, and auto-fixes until passing — all in one invocation.
+>
+> **Only use this skill directly** if you specifically need to bypass the optimizer
+> (e.g., rapid iteration on a known-working MCP, or debugging the builder itself).
+
 This skill generates complete, production-ready MCP servers autonomously.
 
 ## IMPORTANT: Ask User First
@@ -22,6 +32,7 @@ Wait for user confirmation before proceeding.
 ## When to SUGGEST This Skill
 
 Proactively suggest this skill when:
+
 - User mentions a tool/service that has no MCP (check available tools first)
 - User asks "can Claude connect to X?" where X has no MCP
 - User wants to automate something with an external API
@@ -30,6 +41,7 @@ Proactively suggest this skill when:
 ## When to Use (After Confirmation)
 
 Execute this skill when:
+
 - User explicitly asks to "create an MCP server for X"
 - User confirms they want to generate after your suggestion
 - User wants to "integrate with X API"
@@ -39,6 +51,7 @@ Execute this skill when:
 ## Can Also IMPROVE Existing MCPs
 
 This skill can also validate and improve existing MCPs:
+
 - Run `thesun({ target: "name", fix: "/path/to/mcp" })` to fix issues
 - Validates: package.json, tests, README, .env.example, architecture docs, git repo
 - Provides score 0-100 and improvement recommendations
@@ -105,12 +118,14 @@ Report back with:
 **CRITICAL**: Generated MCPs must be generic and publishable.
 
 All configuration via environment variables:
+
 - `{TOOL}_API_KEY` - API credentials
 - `{TOOL}_BASE_URL` - API endpoint (with default)
 - `LOG_LEVEL` - Logging verbosity
 - etc.
 
 NO hardcoded:
+
 - Company URLs
 - API keys/tokens
 - Email addresses
@@ -119,6 +134,7 @@ NO hardcoded:
 ## Quality Gates
 
 The generated MCP must pass:
+
 - ✅ All tests passing
 - ✅ 70%+ code coverage
 - ✅ No critical security issues
@@ -129,6 +145,7 @@ The generated MCP must pass:
 ## Error Handling
 
 If generation fails:
+
 1. Check the error in the build log
 2. Most issues are auto-remediated via iteration
 3. Persistent failures are documented in the output
@@ -139,6 +156,7 @@ If generation fails:
 After generation completes, a final validation phase runs to ensure ALL requirements are met:
 
 ### Validation Checks (ALL run in PARALLEL)
+
 - ✅ package.json exists
 - ✅ Entry point (src/index.ts) exists
 - ✅ README.md exists
@@ -151,7 +169,9 @@ After generation completes, a final validation phase runs to ensure ALL requirem
 - ✅ Git remote configured (GitHub)
 
 ### Remediation Loop
+
 If any validation fails:
+
 1. System identifies failed requirements
 2. Loops back to GENERATING phase
 3. Fixes the specific issues
@@ -161,11 +181,13 @@ If any validation fails:
 ### Using FIX Mode for Existing MCPs
 
 To improve an existing MCP:
+
 ```
 thesun({ target: "toolname", fix: "/path/to/existing-mcp" })
 ```
 
 This will:
+
 1. Validate the existing MCP (score 0-100)
 2. Identify missing items and issues
 3. Autonomously fix problems
