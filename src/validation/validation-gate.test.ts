@@ -482,21 +482,31 @@ describe("ValidationGate", () => {
   });
 
   describe("runValidation", () => {
+    // Source that doesn't match tool extraction regex — instrumentation phase skips when no tools found
+    const mockToolSource = `// empty MCP server source\nexport default {};\n`;
+    const packageJsonContent = JSON.stringify({
+      name: "test-mcp",
+      scripts: { build: "tsc" },
+      main: "dist/index.js",
+      target: mockTarget,
+      authType: "api-key",
+      apiKey: "test-key",
+      baseUrl: "https://api.example.com",
+    });
+
+    function mockReadFileWithToolSource() {
+      const mockReadFile = vi.mocked(fs.readFile);
+      mockReadFile.mockImplementation(async (filePath: any) => {
+        if (String(filePath).endsWith("index.ts")) {
+          return mockToolSource;
+        }
+        return packageJsonContent;
+      });
+    }
+
     it("runs all validation phases in order", async () => {
       mockExecCommand.mockResolvedValue({ stdout: "", stderr: "" });
-
-      const mockReadFile = vi.mocked(fs.readFile);
-      mockReadFile.mockResolvedValue(
-        JSON.stringify({
-          name: "test-mcp",
-          scripts: { build: "tsc" },
-          main: "dist/index.js",
-          target: mockTarget,
-          authType: "api-key",
-          apiKey: "test-key",
-          baseUrl: "https://api.example.com",
-        }),
-      );
+      mockReadFileWithToolSource();
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -507,8 +517,9 @@ describe("ValidationGate", () => {
       const result = await gate.runValidation(mockTarget, mockMcpPath);
 
       expect(result.target).toBe(mockTarget);
-      expect(result.phases.length).toBeGreaterThanOrEqual(4);
+      expect(result.phases.length).toBeGreaterThanOrEqual(5);
       expect(result.phases.map((p) => p.phase)).toContain("build");
+      expect(result.phases.map((p) => p.phase)).toContain("instrumentation");
       expect(result.phases.map((p) => p.phase)).toContain("endpoints");
       expect(result.phases.map((p) => p.phase)).toContain("auth");
       expect(result.phases.map((p) => p.phase)).toContain("integration");
@@ -520,13 +531,7 @@ describe("ValidationGate", () => {
       (error as any).stderr = "Compilation error";
       mockExecCommand.mockRejectedValue(error);
 
-      const mockReadFile = vi.mocked(fs.readFile);
-      mockReadFile.mockResolvedValue(
-        JSON.stringify({
-          name: "test-mcp",
-          scripts: { build: "tsc" },
-        }),
-      );
+      mockReadFileWithToolSource();
 
       const result = await gate.runValidation(mockTarget, mockMcpPath);
 
@@ -548,18 +553,7 @@ describe("ValidationGate", () => {
         return { stdout: "", stderr: "" };
       });
 
-      const mockReadFile = vi.mocked(fs.readFile);
-      mockReadFile.mockResolvedValue(
-        JSON.stringify({
-          name: "test-mcp",
-          scripts: { build: "tsc" },
-          main: "dist/index.js",
-          target: mockTarget,
-          authType: "api-key",
-          apiKey: "test-key",
-          baseUrl: "https://api.example.com",
-        }),
-      );
+      mockReadFileWithToolSource();
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -575,19 +569,7 @@ describe("ValidationGate", () => {
 
     it("tracks total duration across all iterations", async () => {
       mockExecCommand.mockResolvedValue({ stdout: "", stderr: "" });
-
-      const mockReadFile = vi.mocked(fs.readFile);
-      mockReadFile.mockResolvedValue(
-        JSON.stringify({
-          name: "test-mcp",
-          scripts: { build: "tsc" },
-          main: "dist/index.js",
-          target: mockTarget,
-          authType: "api-key",
-          apiKey: "test-key",
-          baseUrl: "https://api.example.com",
-        }),
-      );
+      mockReadFileWithToolSource();
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -602,19 +584,7 @@ describe("ValidationGate", () => {
 
     it("returns success when all phases pass", async () => {
       mockExecCommand.mockResolvedValue({ stdout: "Success", stderr: "" });
-
-      const mockReadFile = vi.mocked(fs.readFile);
-      mockReadFile.mockResolvedValue(
-        JSON.stringify({
-          name: "test-mcp",
-          scripts: { build: "tsc" },
-          main: "dist/index.js",
-          target: mockTarget,
-          authType: "api-key",
-          apiKey: "test-key",
-          baseUrl: "https://api.example.com",
-        }),
-      );
+      mockReadFileWithToolSource();
 
       mockFetch.mockResolvedValue({
         ok: true,

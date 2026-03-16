@@ -763,6 +763,7 @@ export type VersionCheckResult = z.infer<typeof VersionCheckResultSchema>;
 
 export const ValidationGatePhaseSchema = z.enum([
   "build",
+  "instrumentation",
   "endpoints",
   "auth",
   "integration",
