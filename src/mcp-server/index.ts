@@ -494,6 +494,73 @@ ${outputDir}/
 └── README.md             # With easy install instructions
 \`\`\`
 
+### Tool Instrumentation Standard (MANDATORY)
+
+Every tool definition in the generated MCP MUST follow these rules:
+
+#### Description Format
+
+Every tool's \`description\` field MUST use this 3-part structure:
+
+\`\`\`
+<purpose — what the tool does, 1 sentence>. <prerequisites — "Requires {param} — call {tool} first." if tool has ID params>. Next: <tool_a> for X, <tool_b> for Y.
+\`\`\`
+
+Rules:
+- **Purpose**: Always present. One sentence describing what the tool does.
+- **Prerequisites**: Include when the tool requires an ID or reference obtained from another tool. Format: "Requires {paramName} — call {sourceToolName} first."
+- **Next steps**: Include "Next: {tool} for X, {tool} for Y." linking to logically related tools. Omit ONLY for terminal actions (e.g., delete with no follow-up).
+
+Examples:
+- "List all projects. Supports pagination via cursor parameter. Next: get_project for details, list_tasks to see project tasks."
+- "Get user details by ID. Requires userId — call list_users first. Next: update_user to modify, delete_user to remove."
+- "Delete a project permanently. Requires projectId — call list_projects first. This action is destructive and irreversible."
+- For HAR-discovered endpoints with no docs: infer purpose from URL path + HTTP method. E.g., POST /api/v2/users/{id}/messages → "Send a message to a user. Requires userId — call list_users first. Next: list_messages to verify delivery."
+
+#### Behavioral Annotations (REQUIRED on every tool)
+
+Set all four annotation fields based on HTTP method:
+
+| HTTP Method | readOnlyHint | destructiveHint | idempotentHint | openWorldHint |
+|-------------|-------------|-----------------|----------------|---------------|
+| GET         | true        | false           | true           | false*        |
+| POST        | false       | false           | false          | false         |
+| PUT         | false       | false           | true           | false         |
+| PATCH       | false       | false           | false          | false         |
+| DELETE      | false       | true            | true           | false         |
+
+*Set openWorldHint: true for list/search endpoints that return unbounded results.
+
+Example:
+\`\`\`typescript
+{
+  name: "list_users",
+  description: "List all users. Supports pagination. Next: get_user for details, create_user to add.",
+  annotations: {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+  },
+  inputSchema: { ... }
+}
+\`\`\`
+
+#### Parameter Description Enrichment
+
+- **Date parameters**: Include format example: \`"ISO 8601 date (e.g., 2026-03-16T14:00:00)"\`
+- **ID parameters**: Note source: \`"User ID — from list_users or search_users"\`
+- **Enum-like parameters**: List all valid values
+- **Parameters with defaults**: Include the default value in the description
+
+#### HAR-Discovered Endpoints
+
+When building tools from captured network traffic (no OpenAPI spec):
+- Infer purpose from URL path segments + HTTP method
+- Infer prerequisites from path parameters ({id} in path → needs ID from a list/search tool)
+- Infer parameter types from observed request body shapes
+- Mark all tools with \`// Source: HAR capture\` comment for traceability
+
 **CRITICAL: browser-auth.ts Module**
 
 Copy the browser auth template from thesun:
@@ -1927,6 +1994,73 @@ ${outputDir}/
 ├── .env.example
 └── README.md
 \`\`\`
+
+### Tool Instrumentation Standard (MANDATORY)
+
+Every tool definition in the generated MCP MUST follow these rules:
+
+#### Description Format
+
+Every tool's \`description\` field MUST use this 3-part structure:
+
+\`\`\`
+<purpose — what the tool does, 1 sentence>. <prerequisites — "Requires {param} — call {tool} first." if tool has ID params>. Next: <tool_a> for X, <tool_b> for Y.
+\`\`\`
+
+Rules:
+- **Purpose**: Always present. One sentence describing what the tool does.
+- **Prerequisites**: Include when the tool requires an ID or reference obtained from another tool. Format: "Requires {paramName} — call {sourceToolName} first."
+- **Next steps**: Include "Next: {tool} for X, {tool} for Y." linking to logically related tools. Omit ONLY for terminal actions (e.g., delete with no follow-up).
+
+Examples:
+- "List all projects. Supports pagination via cursor parameter. Next: get_project for details, list_tasks to see project tasks."
+- "Get user details by ID. Requires userId — call list_users first. Next: update_user to modify, delete_user to remove."
+- "Delete a project permanently. Requires projectId — call list_projects first. This action is destructive and irreversible."
+- For HAR-discovered endpoints with no docs: infer purpose from URL path + HTTP method. E.g., POST /api/v2/users/{id}/messages → "Send a message to a user. Requires userId — call list_users first. Next: list_messages to verify delivery."
+
+#### Behavioral Annotations (REQUIRED on every tool)
+
+Set all four annotation fields based on HTTP method:
+
+| HTTP Method | readOnlyHint | destructiveHint | idempotentHint | openWorldHint |
+|-------------|-------------|-----------------|----------------|---------------|
+| GET         | true        | false           | true           | false*        |
+| POST        | false       | false           | false          | false         |
+| PUT         | false       | false           | true           | false         |
+| PATCH       | false       | false           | false          | false         |
+| DELETE      | false       | true            | true           | false         |
+
+*Set openWorldHint: true for list/search endpoints that return unbounded results.
+
+Example:
+\`\`\`typescript
+{
+  name: "list_users",
+  description: "List all users. Supports pagination. Next: get_user for details, create_user to add.",
+  annotations: {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+  },
+  inputSchema: { ... }
+}
+\`\`\`
+
+#### Parameter Description Enrichment
+
+- **Date parameters**: Include format example: \`"ISO 8601 date (e.g., 2026-03-16T14:00:00)"\`
+- **ID parameters**: Note source: \`"User ID — from list_users or search_users"\`
+- **Enum-like parameters**: List all valid values
+- **Parameters with defaults**: Include the default value in the description
+
+#### HAR-Discovered Endpoints
+
+When building tools from captured network traffic (no OpenAPI spec):
+- Infer purpose from URL path segments + HTTP method
+- Infer prerequisites from path parameters ({id} in path → needs ID from a list/search tool)
+- Infer parameter types from observed request body shapes
+- Mark all tools with \`// Source: HAR capture\` comment for traceability
 
 ### 5.2 Generate Auth Module (CRITICAL)
 
