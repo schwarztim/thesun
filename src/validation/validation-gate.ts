@@ -20,6 +20,7 @@ import type {
   ValidationDetail,
   DiscoveredEndpoint,
 } from "../types/index.js";
+import { logger } from "../observability/logger.js";
 
 // Create promisified exec at module level
 const execPromise = promisify(execCallback);
@@ -106,7 +107,23 @@ export class ValidationGate {
         continue;
       }
 
-      // Phase 2: Endpoint validation
+      // Phase 2: Instrumentation validation
+      const instrumentationResult = await this.validateInstrumentation(
+        target,
+        mcpPath,
+      );
+      phases.push(instrumentationResult);
+
+      if (!instrumentationResult.passed) {
+        failedPhase = "instrumentation";
+        const fixed = await this.attemptFix(instrumentationResult, mcpPath);
+        if (!fixed && iteration >= MAX_ITERATIONS) {
+          break;
+        }
+        continue;
+      }
+
+      // Phase 3: Endpoint validation
       const endpointResult = await this.validateEndpoints(
         target,
         mcpPath,
@@ -123,7 +140,7 @@ export class ValidationGate {
         continue;
       }
 
-      // Phase 3: Auth validation
+      // Phase 4: Auth validation
       const authResult = await this.validateAuth(target);
       phases.push(authResult);
 
@@ -136,7 +153,7 @@ export class ValidationGate {
         continue;
       }
 
-      // Phase 4: Integration validation
+      // Phase 5: Integration validation
       const integrationResult = await this.validateIntegration(target, mcpPath);
       phases.push(integrationResult);
 
@@ -705,6 +722,203 @@ export class ValidationGate {
   }
 
   /**
+   * Validate tool description format — checks prerequisite guidance and cross-references
+   */
+  validateToolDescription(
+    tool: { name: string; description: string; inputSchema?: any },
+    allToolNames: string[],
+  ): { passed: boolean; error?: string } {
+    const desc = tool.description || "";
+    const hasIdParam = tool.inputSchema?.properties
+      ? Object.keys(tool.inputSchema.properties).some(
+          (k: string) =>
+            k.toLowerCase().endsWith("id") || k.toLowerCase().endsWith("_id"),
+        )
+      : false;
+    const isHelpTool = tool.name.endsWith("_help");
+
+    if (isHelpTool) return { passed: true };
+
+    if (
+      hasIdParam &&
+      !desc.toLowerCase().includes("call ") &&
+      !desc.toLowerCase().includes("requires")
+    ) {
+      return {
+        passed: false,
+        error: `Tool "${tool.name}" has ID parameters but no prerequisite guidance in description`,
+      };
+    }
+
+    const callMatches = desc.matchAll(/call\s+(\w+)\s+first/gi);
+    for (const match of callMatches) {
+      const referencedTool = match[1];
+      if (!allToolNames.includes(referencedTool)) {
+        return {
+          passed: false,
+          error: `Tool "${tool.name}" references non-existent tool "${referencedTool}" in prerequisite`,
+        };
+      }
+    }
+
+    const nextMatch = desc.match(/Next:\s*(.+?)\.?\s*$/);
+    if (nextMatch) {
+      const nextRefs = nextMatch[1].matchAll(/(\w+)\s+(?:for|to)\s/gi);
+      for (const ref of nextRefs) {
+        if (!allToolNames.includes(ref[1])) {
+          return {
+            passed: false,
+            error: `Tool "${tool.name}" references non-existent tool "${ref[1]}" in Next directive`,
+          };
+        }
+      }
+    }
+
+    return { passed: true };
+  }
+
+  /**
+   * Validate tool annotations are present
+   */
+  validateToolAnnotations(tool: {
+    name: string;
+    annotations?: Record<string, boolean>;
+  }): { passed: boolean; error?: string } {
+    if (!tool.annotations) {
+      return { passed: false, error: `Tool "${tool.name}" has no annotations` };
+    }
+    const required = [
+      "readOnlyHint",
+      "destructiveHint",
+      "idempotentHint",
+      "openWorldHint",
+    ];
+    const missing = required.filter((k) => tool.annotations![k] === undefined);
+    if (missing.length > 0) {
+      return {
+        passed: false,
+        error: `Tool "${tool.name}" missing annotations: ${missing.join(", ")}`,
+      };
+    }
+    return { passed: true };
+  }
+
+  /**
+   * Validate that a help tool exists with a topic parameter
+   */
+  validateHelpToolExists(
+    target: string,
+    tools: Array<{ name: string; description?: string; inputSchema?: any }>,
+  ): { passed: boolean; error?: string } {
+    const helpTool = tools.find((t) => t.name === `${target}_help`);
+    if (!helpTool) {
+      return { passed: false, error: `Missing ${target}_help tool` };
+    }
+    if (!helpTool.inputSchema?.properties?.topic) {
+      return {
+        passed: false,
+        error: `${target}_help tool missing "topic" parameter`,
+      };
+    }
+    return { passed: true };
+  }
+
+  /**
+   * Orchestrate instrumentation validation across all tools
+   */
+  private async validateInstrumentation(
+    target: string,
+    mcpPath: string,
+  ): Promise<ValidationPhaseResult> {
+    const details: ValidationDetail[] = [];
+
+    try {
+      const toolDefs = await this.extractToolDefinitions(mcpPath);
+
+      // Skip instrumentation checks if no tools could be extracted
+      if (toolDefs.length === 0) {
+        details.push({
+          name: "instrumentation_skip",
+          passed: true,
+          duration: 0,
+        });
+        return {
+          phase: "instrumentation",
+          passed: true,
+          details,
+          timestamp: new Date(),
+        };
+      }
+
+      const allToolNames = toolDefs.map((t: any) => t.name);
+
+      for (const tool of toolDefs) {
+        const descResult = this.validateToolDescription(tool, allToolNames);
+        details.push({
+          name: `description:${tool.name}`,
+          passed: descResult.passed,
+          error: descResult.error,
+          duration: 0,
+        });
+      }
+
+      for (const tool of toolDefs) {
+        const annResult = this.validateToolAnnotations(tool);
+        details.push({
+          name: `annotations:${tool.name}`,
+          passed: annResult.passed,
+          error: annResult.error,
+          duration: 0,
+        });
+      }
+
+      const helpResult = this.validateHelpToolExists(target, toolDefs);
+      details.push({
+        name: "help_tool",
+        passed: helpResult.passed,
+        error: helpResult.error,
+        duration: 0,
+      });
+    } catch (error) {
+      details.push({
+        name: "instrumentation_read",
+        passed: false,
+        error: `Failed to read tool definitions: ${error}`,
+        duration: 0,
+      });
+    }
+
+    return {
+      phase: "instrumentation",
+      passed: details.every((d) => d.passed),
+      details,
+      timestamp: new Date(),
+    };
+  }
+
+  /**
+   * Extract tool definitions from generated MCP source
+   */
+  private async extractToolDefinitions(mcpPath: string): Promise<any[]> {
+    const indexPath = path.join(mcpPath, "src", "index.ts");
+    const source = await fs.readFile(indexPath, "utf-8");
+
+    const toolRegex =
+      /\{\s*name:\s*["']([^"']+)["']\s*,\s*(?:title:\s*["'][^"']*["']\s*,\s*)?description:\s*["'`]([^"'`]*(?:(?:["'`][^"'`]*)*["'`])?)/g;
+    const tools: any[] = [];
+    let match;
+
+    while ((match = toolRegex.exec(source)) !== null) {
+      tools.push({
+        name: match[1],
+        description: match[2],
+      });
+    }
+
+    return tools;
+  }
+
+  /**
    * Attempt to fix issues from a failed validation phase
    */
   async attemptFix(
@@ -718,6 +932,14 @@ export class ValidationGate {
     switch (result.phase) {
       case "build":
         return this.fixBuildIssues(result, mcpPath);
+      case "instrumentation":
+        logger.warn(
+          `Instrumentation validation failed: ${result.details
+            .filter((d) => !d.passed)
+            .map((d) => d.error)
+            .join("; ")}`,
+        );
+        return false; // Cannot auto-fix — requires re-running enrichment phase
       case "endpoints":
         return this.fixEndpointIssues(result, mcpPath);
       case "auth":

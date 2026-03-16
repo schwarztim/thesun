@@ -3,8 +3,8 @@
  * Manages transitions between build phases with validation
  */
 
-import { BuildPhase, BuildState } from '../types/index.js';
-import { logger } from '../observability/logger.js';
+import { BuildPhase, BuildState } from "../types/index.js";
+import { logger } from "../observability/logger.js";
 
 /**
  * Valid state transitions for the build lifecycle
@@ -12,12 +12,33 @@ import { logger } from '../observability/logger.js';
 const VALID_TRANSITIONS: Record<BuildPhase, BuildPhase[]> = {
   [BuildPhase.PENDING]: [BuildPhase.DISCOVERING, BuildPhase.FAILED],
   [BuildPhase.DISCOVERING]: [BuildPhase.GENERATING, BuildPhase.FAILED],
-  [BuildPhase.GENERATING]: [BuildPhase.TESTING, BuildPhase.FAILED],
-  [BuildPhase.TESTING]: [BuildPhase.SECURITY_SCAN, BuildPhase.GENERATING, BuildPhase.FAILED], // Can loop back
-  [BuildPhase.SECURITY_SCAN]: [BuildPhase.OPTIMIZING, BuildPhase.GENERATING, BuildPhase.FAILED], // Can loop back
-  [BuildPhase.OPTIMIZING]: [BuildPhase.VALIDATING, BuildPhase.TESTING, BuildPhase.FAILED], // Can loop back
-  [BuildPhase.VALIDATING]: [BuildPhase.VALIDATE_REQUIREMENTS, BuildPhase.TESTING, BuildPhase.FAILED], // Can loop back
-  [BuildPhase.VALIDATE_REQUIREMENTS]: [BuildPhase.COMPLETED, BuildPhase.GENERATING, BuildPhase.FAILED], // Final check, can remediate
+  [BuildPhase.GENERATING]: [BuildPhase.INSTRUMENTING, BuildPhase.FAILED],
+  [BuildPhase.INSTRUMENTING]: [BuildPhase.TESTING, BuildPhase.FAILED],
+  [BuildPhase.TESTING]: [
+    BuildPhase.SECURITY_SCAN,
+    BuildPhase.GENERATING,
+    BuildPhase.FAILED,
+  ], // Can loop back
+  [BuildPhase.SECURITY_SCAN]: [
+    BuildPhase.OPTIMIZING,
+    BuildPhase.GENERATING,
+    BuildPhase.FAILED,
+  ], // Can loop back
+  [BuildPhase.OPTIMIZING]: [
+    BuildPhase.VALIDATING,
+    BuildPhase.TESTING,
+    BuildPhase.FAILED,
+  ], // Can loop back
+  [BuildPhase.VALIDATING]: [
+    BuildPhase.VALIDATE_REQUIREMENTS,
+    BuildPhase.TESTING,
+    BuildPhase.FAILED,
+  ], // Can loop back
+  [BuildPhase.VALIDATE_REQUIREMENTS]: [
+    BuildPhase.COMPLETED,
+    BuildPhase.GENERATING,
+    BuildPhase.FAILED,
+  ], // Final check, can remediate
   [BuildPhase.COMPLETED]: [], // Terminal state
   [BuildPhase.FAILED]: [], // Terminal state
 };
@@ -36,7 +57,7 @@ export function isValidTransition(from: BuildPhase, to: BuildPhase): boolean {
 export function transitionState(
   state: BuildState,
   newPhase: BuildPhase,
-  updates?: Partial<BuildState>
+  updates?: Partial<BuildState>,
 ): BuildState {
   const currentPhase = state.phase;
 
@@ -105,13 +126,19 @@ export function createInitialState(toolName: string): BuildState {
  * Check if build is in a terminal state
  */
 export function isTerminalState(state: BuildState): boolean {
-  return state.phase === BuildPhase.COMPLETED || state.phase === BuildPhase.FAILED;
+  return (
+    state.phase === BuildPhase.COMPLETED || state.phase === BuildPhase.FAILED
+  );
 }
 
 /**
  * Check if build should loop back for fixes
  */
-export function shouldLoopBack(state: BuildState): { shouldLoop: boolean; targetPhase?: BuildPhase; reason?: string } {
+export function shouldLoopBack(state: BuildState): {
+  shouldLoop: boolean;
+  targetPhase?: BuildPhase;
+  reason?: string;
+} {
   // Check test failures
   if (state.phase === BuildPhase.TESTING && state.testing) {
     if (state.testing.failed > 0 && state.testing.iterations < 5) {
@@ -146,7 +173,10 @@ export function shouldLoopBack(state: BuildState): { shouldLoop: boolean; target
   }
 
   // Check requirement validation failures - remediation loop
-  if (state.phase === BuildPhase.VALIDATE_REQUIREMENTS && state.requirementValidation) {
+  if (
+    state.phase === BuildPhase.VALIDATE_REQUIREMENTS &&
+    state.requirementValidation
+  ) {
     const maxRemediationAttempts = 3;
     if (
       state.requirementValidation.failed > 0 &&

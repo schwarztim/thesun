@@ -38,6 +38,37 @@ export const ToolSpecSchema = z.object({
 export type ToolSpec = z.infer<typeof ToolSpecSchema>;
 
 // ============================================================================
+// Tool Instrumentation Types
+// ============================================================================
+
+export const ToolInstrumentationResultSchema = z.object({
+  target: z.string(),
+  toolCount: z.number(),
+  workflowPatterns: z.array(
+    z.object({
+      topic: z.string(),
+      steps: z.array(
+        z.object({
+          toolName: z.string(),
+          purpose: z.string(),
+        }),
+      ),
+    }),
+  ),
+  helpToolGenerated: z.boolean(),
+  enrichmentStats: z.object({
+    prerequisitesAdded: z.number(),
+    nextDirectivesAdded: z.number(),
+    annotationsAdded: z.number(),
+    descriptionsRewritten: z.number(),
+  }),
+});
+
+export type ToolInstrumentationResult = z.infer<
+  typeof ToolInstrumentationResultSchema
+>;
+
+// ============================================================================
 // Build State Machine
 // ============================================================================
 
@@ -45,6 +76,7 @@ export const BuildPhase = {
   PENDING: "pending",
   DISCOVERING: "discovering",
   GENERATING: "generating",
+  INSTRUMENTING: "instrumenting",
   TESTING: "testing",
   SECURITY_SCAN: "security_scan",
   OPTIMIZING: "optimizing",
@@ -63,6 +95,7 @@ export const BuildStateSchema = z.object({
     "pending",
     "discovering",
     "generating",
+    "instrumenting",
     "testing",
     "security_scan",
     "optimizing",
@@ -137,6 +170,9 @@ export const BuildStateSchema = z.object({
       allMet: z.boolean().default(false),
     })
     .optional(),
+
+  // Tool instrumentation results
+  toolInstrumentation: ToolInstrumentationResultSchema.optional(),
 });
 
 export type BuildState = z.infer<typeof BuildStateSchema>;
@@ -189,6 +225,28 @@ export const DiscoveredEndpointSchema = z.object({
       params: z.array(z.string()).optional(),
     })
     .optional(),
+
+  // Tool instrumentation metadata (populated during enrichment phase, not discovery)
+  toolName: z.string().optional(),
+  prerequisites: z
+    .array(
+      z.object({
+        paramName: z.string(),
+        sourceToolName: z.string(),
+        sourceField: z.string().optional(),
+      }),
+    )
+    .optional(),
+  nextTools: z.array(z.string()).optional(),
+  annotations: z
+    .object({
+      readOnlyHint: z.boolean().optional(),
+      destructiveHint: z.boolean().optional(),
+      idempotentHint: z.boolean().optional(),
+      openWorldHint: z.boolean().optional(),
+    })
+    .optional(),
+  inferredFrom: z.enum(["openapi", "har", "docs", "pattern"]).optional(),
 });
 
 export type DiscoveredEndpoint = z.infer<typeof DiscoveredEndpointSchema>;
@@ -705,6 +763,7 @@ export type VersionCheckResult = z.infer<typeof VersionCheckResultSchema>;
 
 export const ValidationGatePhaseSchema = z.enum([
   "build",
+  "instrumentation",
   "endpoints",
   "auth",
   "integration",

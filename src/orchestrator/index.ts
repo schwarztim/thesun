@@ -5,7 +5,7 @@
  * Manages the complete lifecycle from tool spec to deployed MCP.
  */
 
-import { EventEmitter } from 'events';
+import { EventEmitter } from "events";
 import {
   ToolSpec,
   BuildState,
@@ -13,34 +13,43 @@ import {
   OrchestratorConfig,
   OrchestratorConfigSchema,
   RequirementSet,
-} from '../types/index.js';
+} from "../types/index.js";
 import {
   createInitialState,
   transitionState,
   getNextPhase,
   isTerminalState,
-} from './state-machine.js';
+} from "./state-machine.js";
 import {
   RequirementTracker,
   DiscoveryLogger,
   validateExistingMcp,
   generateValidationRules,
   runAllValidations,
-} from '../tracking/index.js';
-import { BobInstanceManager, getBobManager } from '../bob/instance-manager.js';
-import { ApiResearcher, getApiResearcher } from '../discovery/api-researcher.js';
-import { selectModelForPhase } from '../agents/model-selector.js';
-import { logger, createBuildLogger, logStateTransition } from '../observability/logger.js';
-import { ensureDir, getDefaultDataDir } from '../utils/platform.js';
+} from "../tracking/index.js";
+import { BobInstanceManager, getBobManager } from "../bob/instance-manager.js";
+import {
+  ApiResearcher,
+  getApiResearcher,
+} from "../discovery/api-researcher.js";
+import { selectModelForPhase } from "../agents/model-selector.js";
+import {
+  logger,
+  createBuildLogger,
+  logStateTransition,
+} from "../observability/logger.js";
+import { ensureDir, getDefaultDataDir } from "../utils/platform.js";
+import { homedir } from "os";
+import { join } from "path";
 
 /**
  * Build events for monitoring
  */
 export interface OrchestratorEvents {
-  'build:start': (state: BuildState) => void;
-  'build:phase': (state: BuildState, previousPhase: BuildPhase) => void;
-  'build:complete': (state: BuildState) => void;
-  'build:fail': (state: BuildState, error: Error) => void;
+  "build:start": (state: BuildState) => void;
+  "build:phase": (state: BuildState, previousPhase: BuildPhase) => void;
+  "build:complete": (state: BuildState) => void;
+  "build:fail": (state: BuildState, error: Error) => void;
 }
 
 /**
@@ -64,10 +73,10 @@ export class Orchestrator extends EventEmitter {
     // Validate and set config with defaults
     const defaultConfig = {
       dataDir: getDefaultDataDir(),
-      workspace: '/tmp/thesun/builds',
+      workspace: "/tmp/thesun/builds",
       maxParallelBuilds: 4,
-      bobIsolationMode: 'process' as const,
-      logLevel: 'info' as const,
+      bobIsolationMode: "process" as const,
+      logLevel: "info" as const,
       securityGates: {
         blockOnCriticalSast: true,
         blockOnCriticalCve: true,
@@ -81,7 +90,10 @@ export class Orchestrator extends EventEmitter {
       },
     };
 
-    this.config = OrchestratorConfigSchema.parse({ ...defaultConfig, ...config });
+    this.config = OrchestratorConfigSchema.parse({
+      ...defaultConfig,
+      ...config,
+    });
 
     // Ensure directories exist
     ensureDir(this.config.dataDir);
@@ -91,7 +103,7 @@ export class Orchestrator extends EventEmitter {
     this.bobManager = getBobManager({ baseWorkspace: this.config.workspace });
     this.apiResearcher = getApiResearcher();
 
-    logger.info('Orchestrator initialized', {
+    logger.info("Orchestrator initialized", {
       dataDir: this.config.dataDir,
       workspace: this.config.workspace,
       maxParallelBuilds: this.config.maxParallelBuilds,
@@ -130,7 +142,7 @@ export class Orchestrator extends EventEmitter {
     while (this.buildQueue.length > 0) {
       // Check how many builds are currently active (not in terminal state)
       const activeBuildCount = Array.from(this.activeBuilds.values()).filter(
-        (b) => !isTerminalState(b)
+        (b) => !isTerminalState(b),
       ).length;
 
       if (activeBuildCount >= this.config.maxParallelBuilds) {
@@ -144,7 +156,7 @@ export class Orchestrator extends EventEmitter {
 
       // Find the build state for this tool
       const state = Array.from(this.activeBuilds.values()).find(
-        (b) => b.toolName === tool.name && b.phase === BuildPhase.PENDING
+        (b) => b.toolName === tool.name && b.phase === BuildPhase.PENDING,
       );
 
       if (state) {
@@ -164,12 +176,15 @@ export class Orchestrator extends EventEmitter {
   /**
    * Execute a complete build for a tool
    */
-  private async executeBuild(tool: ToolSpec, initialState: BuildState): Promise<BuildState> {
+  private async executeBuild(
+    tool: ToolSpec,
+    initialState: BuildState,
+  ): Promise<BuildState> {
     let state = initialState;
     const buildLogger = createBuildLogger(state.id, tool.name);
 
-    buildLogger.info('Starting build');
-    this.emit('build:start', state);
+    buildLogger.info("Starting build");
+    this.emit("build:start", state);
 
     // Create isolated bob instance for this build
     // Uses git worktrees for true parallel isolation and inherits user's MCP servers
@@ -202,7 +217,7 @@ export class Orchestrator extends EventEmitter {
 
         state = transitionState(state, nextPhase);
         this.activeBuilds.set(state.id, state);
-        this.emit('build:phase', state, previousPhase);
+        this.emit("build:phase", state, previousPhase);
         logStateTransition(state.id, previousPhase, nextPhase);
 
         // Execute phase
@@ -216,15 +231,19 @@ export class Orchestrator extends EventEmitter {
       });
 
       if (state.phase === BuildPhase.COMPLETED) {
-        buildLogger.info('Build completed successfully', {
+        buildLogger.info("Build completed successfully", {
           endpoints: state.discovery?.endpoints,
           toolsGenerated: state.generation?.toolsGenerated,
           testsPassed: state.testing?.passed,
         });
-        this.emit('build:complete', state);
+        this.emit("build:complete", state);
       } else {
-        buildLogger.error('Build failed', { error: state.error });
-        this.emit('build:fail', state, new Error(state.error ?? 'Unknown error'));
+        buildLogger.error("Build failed", { error: state.error });
+        this.emit(
+          "build:fail",
+          state,
+          new Error(state.error ?? "Unknown error"),
+        );
       }
 
       return state;
@@ -238,10 +257,14 @@ export class Orchestrator extends EventEmitter {
       // Clean up bob instance
       await this.bobManager.destroy(bobInstance.id);
 
-      buildLogger.error('Build failed with exception', {
+      buildLogger.error("Build failed with exception", {
         error: error instanceof Error ? error.message : String(error),
       });
-      this.emit('build:fail', state, error instanceof Error ? error : new Error(String(error)));
+      this.emit(
+        "build:fail",
+        state,
+        error instanceof Error ? error : new Error(String(error)),
+      );
 
       return state;
     }
@@ -253,7 +276,7 @@ export class Orchestrator extends EventEmitter {
   private async executePhase(
     tool: ToolSpec,
     state: BuildState,
-    bobInstanceId: string
+    bobInstanceId: string,
   ): Promise<BuildState> {
     const buildLogger = createBuildLogger(state.id, tool.name);
     buildLogger.info(`Executing phase: ${state.phase}`);
@@ -264,6 +287,9 @@ export class Orchestrator extends EventEmitter {
 
       case BuildPhase.GENERATING:
         return this.executeGenerationPhase(tool, state, bobInstanceId);
+
+      case BuildPhase.INSTRUMENTING:
+        return this.executeInstrumentingPhase(tool, state, bobInstanceId);
 
       case BuildPhase.TESTING:
         return this.executeTestingPhase(tool, state, bobInstanceId);
@@ -278,7 +304,11 @@ export class Orchestrator extends EventEmitter {
         return this.executeValidationPhase(tool, state, bobInstanceId);
 
       case BuildPhase.VALIDATE_REQUIREMENTS:
-        return this.executeRequirementValidationPhase(tool, state, bobInstanceId);
+        return this.executeRequirementValidationPhase(
+          tool,
+          state,
+          bobInstanceId,
+        );
 
       default:
         return state;
@@ -288,7 +318,10 @@ export class Orchestrator extends EventEmitter {
   /**
    * Discovery phase: Research and catalog all APIs
    */
-  private async executeDiscoveryPhase(tool: ToolSpec, state: BuildState): Promise<BuildState> {
+  private async executeDiscoveryPhase(
+    tool: ToolSpec,
+    state: BuildState,
+  ): Promise<BuildState> {
     const discoveryResult = await this.apiResearcher.research(tool);
 
     return {
@@ -312,9 +345,12 @@ export class Orchestrator extends EventEmitter {
   private async executeGenerationPhase(
     tool: ToolSpec,
     state: BuildState,
-    bobInstanceId: string
+    bobInstanceId: string,
   ): Promise<BuildState> {
-    const model = selectModelForPhase(BuildPhase.GENERATING, state.testing?.iterations ?? 0);
+    const model = selectModelForPhase(
+      BuildPhase.GENERATING,
+      state.testing?.iterations ?? 0,
+    );
 
     // Use bob instance to generate code
     const prompt = this.buildGenerationPrompt(tool, state);
@@ -331,9 +367,185 @@ export class Orchestrator extends EventEmitter {
       generation: {
         toolsGenerated,
         filesCreated: [], // Would be populated from actual file creation
-        templateUsed: 'typescript-mcp',
+        templateUsed: "typescript-mcp",
       },
     };
+  }
+
+  /**
+   * Instrumentation phase: Enrich tool descriptions, add annotations,
+   * generate help tool, build workflow patterns
+   */
+  private async executeInstrumentingPhase(
+    tool: ToolSpec,
+    state: BuildState,
+    bobInstanceId: string,
+  ): Promise<BuildState> {
+    const buildLogger = createBuildLogger(state.id, tool.name);
+    buildLogger.info("Starting tool instrumentation phase");
+
+    try {
+      const enrichmentPrompt = this.buildEnrichmentPrompt(tool, state);
+      await this.bobManager.execute(bobInstanceId, enrichmentPrompt);
+
+      return {
+        ...state,
+        toolInstrumentation: {
+          target: tool.name,
+          toolCount: state.generation?.toolsGenerated ?? 0,
+          workflowPatterns: [],
+          helpToolGenerated: true,
+          enrichmentStats: {
+            prerequisitesAdded: 0,
+            nextDirectivesAdded: 0,
+            annotationsAdded: 0,
+            descriptionsRewritten: 0,
+          },
+        },
+      };
+    } catch (error) {
+      buildLogger.error(`Instrumentation failed: ${error}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Build the enrichment prompt for Phase 4.5
+   * Sent to the same bob instance after generation completes.
+   * Bob reads generated tool definitions, analyzes cross-tool relationships,
+   * rewrites descriptions, and generates the help tool.
+   */
+  private buildEnrichmentPrompt(tool: ToolSpec, state: BuildState): string {
+    const outputDir = join(
+      homedir(),
+      "Scripts",
+      "mcp-servers",
+      `${tool.name}-mcp`,
+    );
+    const target = tool.name;
+
+    return `
+## PHASE 4.5: TOOL INSTRUMENTATION (Post-Generation Enrichment)
+
+You have just generated an MCP server at ${outputDir}. Now perform a comprehensive
+instrumentation pass to ensure every tool has proper descriptions, annotations,
+and workflow guidance.
+
+### Step 1: Read All Tool Definitions
+
+Read the generated source files to catalog every tool:
+\`\`\`bash
+grep -n "name:" ${outputDir}/src/**/*.ts | grep -v node_modules
+\`\`\`
+
+For each tool, note: name, description, inputSchema (parameters), HTTP method (if visible in handler).
+
+### Step 2: Build Dependency Graph
+
+Analyze cross-tool relationships:
+1. For each tool that accepts an ID parameter (e.g., userId, projectId):
+   - Which other tool produces that ID in its response?
+   - Add "Requires {param} — call {source_tool} first." to the description if missing.
+2. For each tool that produces data:
+   - Which other tools consume that data?
+   - Add "Next: {consumer_tool} for X." to the description if missing.
+
+Cross-resource chains are important — e.g., if list_projects returns projectId and
+list_tasks requires projectId, link them even though they're different resources.
+
+### Step 3: Verify and Fix Descriptions
+
+For every tool, ensure the description follows this format:
+\`\`\`
+<purpose>. <prerequisites if applicable>. Next: <related tools>.
+\`\`\`
+
+Fix any descriptions that:
+- Are single-sentence without Next: directives (unless terminal action)
+- Reference tools that don't exist
+- Miss prerequisite guidance for ID parameters
+- Lack purpose clarity (especially HAR-discovered endpoints)
+
+### Step 4: Verify and Fix Annotations
+
+Every tool MUST have all four annotation fields set:
+\`\`\`typescript
+annotations: {
+  readOnlyHint: boolean,    // true for GET
+  destructiveHint: boolean,  // true for DELETE
+  idempotentHint: boolean,   // true for GET/PUT/DELETE, false for POST/PATCH
+  openWorldHint: boolean,    // true for list/search endpoints
+}
+\`\`\`
+
+Check each tool and add missing annotations based on the HTTP method used in its handler.
+
+### Step 5: Generate ${target}_help Tool
+
+Create a help tool that provides workflow guidance. Add it to the tools array:
+
+\`\`\`typescript
+{
+  name: "${target}_help",
+  description: "Get workflow guidance, tool-chaining patterns, and capability overview for ${target} MCP tools.",
+  annotations: {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  inputSchema: {
+    type: "object",
+    properties: {
+      topic: {
+        type: "string",
+        enum: [/* derive from tool groupings — e.g., "users", "projects", "overview" */],
+        description: "Topic area for workflow guidance. Use 'overview' for a summary of all capabilities.",
+      },
+    },
+    required: ["topic"],
+  },
+}
+\`\`\`
+
+The handler should return markdown with:
+- Step-by-step workflow patterns for the requested topic
+- Key notes and common pitfalls
+- The "overview" topic lists all tool groupings with brief descriptions
+
+Group tools by:
+1. URL path prefix (e.g., /api/users/* → "users" topic)
+2. Tags from OpenAPI spec (if available)
+3. Resource name inferred from tool names (e.g., list_users, get_user, create_user → "users")
+
+For each group, create workflow patterns like:
+\`\`\`markdown
+## List and inspect users
+1. list_users() → get user IDs
+2. get_user(userId) → get full details
+3. update_user(userId, ...) → modify user
+
+## Key notes
+- list_users returns paginated results, use cursor for next page
+- get_user requires userId from list_users
+\`\`\`
+
+### Step 6: Add Anti-Pattern Warnings
+
+Scan all tool descriptions and append warnings where applicable:
+- DELETE tools: append "This action is destructive and irreversible." if not already present
+- Paginated endpoints: append "Returns paginated results — use cursor/offset for additional pages." if not mentioned
+- Endpoints without required filters: append "Without a filter, may return very large result sets." if the endpoint has optional filter params and returns lists
+
+### Step 7: Rebuild and Verify
+
+After all changes:
+\`\`\`bash
+cd ${outputDir} && npm run build
+\`\`\`
+
+Verify the build succeeds with enriched descriptions. Fix any TypeScript errors introduced.
+`;
   }
 
   /**
@@ -342,7 +554,7 @@ export class Orchestrator extends EventEmitter {
   private async executeTestingPhase(
     tool: ToolSpec,
     state: BuildState,
-    bobInstanceId: string
+    bobInstanceId: string,
   ): Promise<BuildState> {
     const iteration = (state.testing?.iterations ?? 0) + 1;
     const model = selectModelForPhase(BuildPhase.TESTING, iteration);
@@ -362,8 +574,12 @@ export class Orchestrator extends EventEmitter {
       ...state,
       testing: {
         totalTests: state.discovery?.endpoints ?? 10,
-        passed: testsPassed ? (state.discovery?.endpoints ?? 10) : Math.floor((state.discovery?.endpoints ?? 10) * 0.7),
-        failed: testsPassed ? 0 : Math.ceil((state.discovery?.endpoints ?? 10) * 0.3),
+        passed: testsPassed
+          ? (state.discovery?.endpoints ?? 10)
+          : Math.floor((state.discovery?.endpoints ?? 10) * 0.7),
+        failed: testsPassed
+          ? 0
+          : Math.ceil((state.discovery?.endpoints ?? 10) * 0.3),
         coverage,
         iterations: iteration,
       },
@@ -376,7 +592,7 @@ export class Orchestrator extends EventEmitter {
   private async executeSecurityPhase(
     tool: ToolSpec,
     state: BuildState,
-    bobInstanceId: string
+    bobInstanceId: string,
   ): Promise<BuildState> {
     // Security scans use Opus for thoroughness
     const prompt = `Run comprehensive security scan on ${tool.name} MCP server:
@@ -409,7 +625,7 @@ Report any findings with severity levels.`;
   private async executeOptimizationPhase(
     tool: ToolSpec,
     state: BuildState,
-    bobInstanceId: string
+    bobInstanceId: string,
   ): Promise<BuildState> {
     const prompt = `Profile and optimize ${tool.name} MCP server:
 1. Measure startup time
@@ -439,7 +655,7 @@ Report any findings with severity levels.`;
   private async executeValidationPhase(
     tool: ToolSpec,
     state: BuildState,
-    bobInstanceId: string
+    bobInstanceId: string,
   ): Promise<BuildState> {
     const prompt = `Final validation for ${tool.name} MCP server:
 1. Verify all discovered endpoints are implemented
@@ -462,17 +678,17 @@ Report any findings with severity levels.`;
   private async executeRequirementValidationPhase(
     tool: ToolSpec,
     state: BuildState,
-    bobInstanceId: string
+    bobInstanceId: string,
   ): Promise<BuildState> {
     const buildLogger = createBuildLogger(state.id, tool.name);
-    buildLogger.info('Running requirement validation (parallel)');
+    buildLogger.info("Running requirement validation (parallel)");
 
     const mcpPath = `${this.config.workspace}/${tool.name}-mcp`;
 
     // Run MCP validation (checks run in parallel internally)
     const mcpValidation = await validateExistingMcp(mcpPath);
 
-    buildLogger.info('MCP validation complete', {
+    buildLogger.info("MCP validation complete", {
       score: mcpValidation.score,
       missingItems: mcpValidation.missingItems.length,
     });
@@ -486,7 +702,10 @@ Report any findings with severity levels.`;
     }
 
     // Generate and run validation rules IN PARALLEL
-    const rules = generateValidationRules(tracker.getRequirementSet(), this.config.workspace);
+    const rules = generateValidationRules(
+      tracker.getRequirementSet(),
+      this.config.workspace,
+    );
     const validationResults = await runAllValidations(rules);
 
     // Count passed/failed
@@ -511,10 +730,11 @@ Report any findings with severity levels.`;
       passed += 10; // 10 checks in MCP validation
     }
 
-    const currentRemediationAttempts = state.requirementValidation?.remediationAttempts ?? 0;
+    const currentRemediationAttempts =
+      state.requirementValidation?.remediationAttempts ?? 0;
     const allMet = failed === 0;
 
-    buildLogger.info('Requirement validation results', {
+    buildLogger.info("Requirement validation results", {
       passed,
       failed,
       allMet,
@@ -528,7 +748,9 @@ Report any findings with severity levels.`;
         passed,
         failed,
         failedRequirements,
-        remediationAttempts: allMet ? currentRemediationAttempts : currentRemediationAttempts + 1,
+        remediationAttempts: allMet
+          ? currentRemediationAttempts
+          : currentRemediationAttempts + 1,
         allMet,
       },
     };
@@ -543,8 +765,8 @@ Report any findings with severity levels.`;
     return `Generate a production-ready MCP server for ${tool.name}.
 
 ## Discovered APIs
-- Total endpoints: ${state.discovery?.endpoints ?? 'unknown'}
-- Auth methods: ${state.discovery?.authMethods?.join(', ') ?? 'unknown'}
+- Total endpoints: ${state.discovery?.endpoints ?? "unknown"}
+- Auth methods: ${state.discovery?.authMethods?.join(", ") ?? "unknown"}
 
 ## Requirements
 1. Use TypeScript with strict mode
@@ -589,7 +811,7 @@ Generate the complete MCP server in the workspace directory.`;
     }
 
     const cancelledState = transitionState(state, BuildPhase.FAILED, {
-      error: 'Build cancelled by user',
+      error: "Build cancelled by user",
     });
     this.activeBuilds.set(buildId, cancelledState);
   }
@@ -598,7 +820,7 @@ Generate the complete MCP server in the workspace directory.`;
    * Shutdown orchestrator
    */
   async shutdown(): Promise<void> {
-    logger.info('Shutting down orchestrator');
+    logger.info("Shutting down orchestrator");
 
     // Cancel all active builds
     for (const [buildId, state] of this.activeBuilds) {
@@ -610,11 +832,13 @@ Generate the complete MCP server in the workspace directory.`;
     // Destroy all bob instances
     await this.bobManager.destroyAll();
 
-    logger.info('Orchestrator shutdown complete');
+    logger.info("Orchestrator shutdown complete");
   }
 }
 
 // Factory function
-export function createOrchestrator(config?: Partial<OrchestratorConfig>): Orchestrator {
+export function createOrchestrator(
+  config?: Partial<OrchestratorConfig>,
+): Orchestrator {
   return new Orchestrator(config);
 }
