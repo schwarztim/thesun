@@ -39,6 +39,8 @@ import {
   logStateTransition,
 } from "../observability/logger.js";
 import { ensureDir, getDefaultDataDir } from "../utils/platform.js";
+import { homedir } from "os";
+import { join } from "path";
 
 /**
  * Build events for monitoring
@@ -408,11 +410,142 @@ export class Orchestrator extends EventEmitter {
   }
 
   /**
-   * Build the enrichment prompt for the instrumentation phase.
-   * Placeholder - populated in Task 9 (Layer 2 prompt).
+   * Build the enrichment prompt for Phase 4.5
+   * Sent to the same bob instance after generation completes.
+   * Bob reads generated tool definitions, analyzes cross-tool relationships,
+   * rewrites descriptions, and generates the help tool.
    */
   private buildEnrichmentPrompt(tool: ToolSpec, state: BuildState): string {
-    return "";
+    const outputDir = join(
+      homedir(),
+      "Scripts",
+      "mcp-servers",
+      `${tool.name}-mcp`,
+    );
+    const target = tool.name;
+
+    return `
+## PHASE 4.5: TOOL INSTRUMENTATION (Post-Generation Enrichment)
+
+You have just generated an MCP server at ${outputDir}. Now perform a comprehensive
+instrumentation pass to ensure every tool has proper descriptions, annotations,
+and workflow guidance.
+
+### Step 1: Read All Tool Definitions
+
+Read the generated source files to catalog every tool:
+\`\`\`bash
+grep -n "name:" ${outputDir}/src/**/*.ts | grep -v node_modules
+\`\`\`
+
+For each tool, note: name, description, inputSchema (parameters), HTTP method (if visible in handler).
+
+### Step 2: Build Dependency Graph
+
+Analyze cross-tool relationships:
+1. For each tool that accepts an ID parameter (e.g., userId, projectId):
+   - Which other tool produces that ID in its response?
+   - Add "Requires {param} — call {source_tool} first." to the description if missing.
+2. For each tool that produces data:
+   - Which other tools consume that data?
+   - Add "Next: {consumer_tool} for X." to the description if missing.
+
+Cross-resource chains are important — e.g., if list_projects returns projectId and
+list_tasks requires projectId, link them even though they're different resources.
+
+### Step 3: Verify and Fix Descriptions
+
+For every tool, ensure the description follows this format:
+\`\`\`
+<purpose>. <prerequisites if applicable>. Next: <related tools>.
+\`\`\`
+
+Fix any descriptions that:
+- Are single-sentence without Next: directives (unless terminal action)
+- Reference tools that don't exist
+- Miss prerequisite guidance for ID parameters
+- Lack purpose clarity (especially HAR-discovered endpoints)
+
+### Step 4: Verify and Fix Annotations
+
+Every tool MUST have all four annotation fields set:
+\`\`\`typescript
+annotations: {
+  readOnlyHint: boolean,    // true for GET
+  destructiveHint: boolean,  // true for DELETE
+  idempotentHint: boolean,   // true for GET/PUT/DELETE, false for POST/PATCH
+  openWorldHint: boolean,    // true for list/search endpoints
+}
+\`\`\`
+
+Check each tool and add missing annotations based on the HTTP method used in its handler.
+
+### Step 5: Generate ${target}_help Tool
+
+Create a help tool that provides workflow guidance. Add it to the tools array:
+
+\`\`\`typescript
+{
+  name: "${target}_help",
+  description: "Get workflow guidance, tool-chaining patterns, and capability overview for ${target} MCP tools.",
+  annotations: {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  inputSchema: {
+    type: "object",
+    properties: {
+      topic: {
+        type: "string",
+        enum: [/* derive from tool groupings — e.g., "users", "projects", "overview" */],
+        description: "Topic area for workflow guidance. Use 'overview' for a summary of all capabilities.",
+      },
+    },
+    required: ["topic"],
+  },
+}
+\`\`\`
+
+The handler should return markdown with:
+- Step-by-step workflow patterns for the requested topic
+- Key notes and common pitfalls
+- The "overview" topic lists all tool groupings with brief descriptions
+
+Group tools by:
+1. URL path prefix (e.g., /api/users/* → "users" topic)
+2. Tags from OpenAPI spec (if available)
+3. Resource name inferred from tool names (e.g., list_users, get_user, create_user → "users")
+
+For each group, create workflow patterns like:
+\`\`\`markdown
+## List and inspect users
+1. list_users() → get user IDs
+2. get_user(userId) → get full details
+3. update_user(userId, ...) → modify user
+
+## Key notes
+- list_users returns paginated results, use cursor for next page
+- get_user requires userId from list_users
+\`\`\`
+
+### Step 6: Add Anti-Pattern Warnings
+
+Scan all tool descriptions and append warnings where applicable:
+- DELETE tools: append "This action is destructive and irreversible." if not already present
+- Paginated endpoints: append "Returns paginated results — use cursor/offset for additional pages." if not mentioned
+- Endpoints without required filters: append "Without a filter, may return very large result sets." if the endpoint has optional filter params and returns lists
+
+### Step 7: Rebuild and Verify
+
+After all changes:
+\`\`\`bash
+cd ${outputDir} && npm run build
+\`\`\`
+
+Verify the build succeeds with enriched descriptions. Fix any TypeScript errors introduced.
+`;
   }
 
   /**
