@@ -55,6 +55,7 @@ export {
   generateUnifiedEnvExample,
   generateUnifiedAuthReadme,
   type AuthMethod,
+  type HermesMode,
   type UnifiedAuthConfig,
 } from "./unified-auth-generator.js";
 
